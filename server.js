@@ -105,14 +105,18 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 🔥 Tentativi ora consumano una domanda
   socket.on('guess:submit', ({ code, text }) => {
     const room = rooms.get(code);
     if (!room || room.status !== 'playing') return;
+
     if (room.questions.length >= room.maxQuestions) {
       return socket.emit('system:error', 'Limite di 20 domande raggiunto');
     }
+
     const guess = String(text).trim();
     const correct = guess.toLowerCase() === room.secretWord.toLowerCase();
+
     const qEntry = {
       id: room.questions.length + 1,
       by: socket.id,
@@ -121,6 +125,7 @@ io.on('connection', (socket) => {
       type: 'guess'
     };
     room.questions.push(qEntry);
+
     io.to(code).emit('guess:new', {
       by: socket.id,
       name: room.players.get(socket.id)?.name,
@@ -128,7 +133,11 @@ io.on('connection', (socket) => {
       correct,
       qCount: room.questions.length
     });
-    if (correct) endRound(code, true, `${room.players.get(socket.id)?.name} ha indovinato!`);
+
+    if (correct) {
+      return endRound(code, true, `${room.players.get(socket.id)?.name} ha indovinato!`);
+    }
+
     if (!correct && room.questions.length >= room.maxQuestions) {
       endRound(code, false, 'Domande esaurite. Nessuno ha indovinato.');
     }
