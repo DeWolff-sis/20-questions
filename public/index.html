@@ -7,8 +7,12 @@
   <style>
     body { font-family: system-ui, sans-serif; max-width: 800px; margin: 24px auto; }
     .row { display:flex; gap:8px; margin:8px 0; flex-wrap: wrap; }
-    .log { border:1px solid #ddd; padding:12px; height:300px; overflow:auto; }
+    .log { border:1px solid #ddd; padding:12px; height:300px; overflow:auto; background:#fafafa; }
     .pill { padding:2px 8px; border-radius:999px; border:1px solid #ccc; }
+    #chat { border:1px solid #ddd; padding:12px; height:200px; overflow:auto; background:#fff; margin-top:12px; }
+    #chatInput { flex:1; }
+    .msg { margin:2px 0; }
+    .msg strong { color:#333; }
   </style>
 </head>
 <body>
@@ -45,6 +49,14 @@
 
   <div class="log" id="log"></div>
 
+  <!-- CHAT -->
+  <h2>💬 Chat</h2>
+  <div id="chat"></div>
+  <div class="row">
+    <input id="chatInput" placeholder="Scrivi un messaggio..." />
+    <button id="chatSend">Invia</button>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
@@ -52,16 +64,27 @@
     let me = { id: null, name: null, role: null };
     let lastQuestionId = null;
     const $ = (id) => document.getElementById(id);
-    const log = (msg) => {
+
+    // LOG GIOCO
+    const log = (msg) => { 
+      const d = document.createElement('div'); 
+      d.textContent = msg; 
+      $('log').appendChild(d); 
+      $('log').scrollTop = $('log').scrollHeight; 
+    };
+
+    // CHAT
+    const chatLog = (msg) => {
       const d = document.createElement('div');
-      d.textContent = msg;
-      $('log').appendChild(d);
-      $('log').scrollTop = $('log').scrollHeight;
+      d.className = 'msg';
+      d.innerHTML = `<strong>${msg.name}:</strong> ${msg.text}`;
+      $('chat').appendChild(d);
+      $('chat').scrollTop = $('chat').scrollHeight;
     };
 
     function sendAnswer(ans) {
       if (lastQuestionId) {
-        socket.emit('question:answer', { code: roomCode, qid: lastQuestionId, answer: ans });
+        socket.emit('question:answer', { code: roomCode, id: lastQuestionId, answer: ans });
         lastQuestionId = null;
         $('answerBox').style.display = 'none';
       }
@@ -78,51 +101,66 @@
       socket.emit('room:join', { code: roomCode, name: me.name });
     };
     $('start').onclick = () => socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
-    $('ask').onclick = () => {
-      const t = $('question').value.trim();
-      if (t) socket.emit('question:ask', { code: roomCode, text: t });
-      $('question').value = '';
+    $('ask').onclick = () => { 
+      const t = $('question').value.trim(); 
+      if (t) socket.emit('question:ask', { code: roomCode, text: t }); 
+      $('question').value = ''; 
     };
-    $('submitGuess').onclick = () => {
-      const t = $('guess').value.trim();
-      if (t) socket.emit('guess:submit', { code: roomCode, text: t });
-      $('guess').value = '';
+    $('submitGuess').onclick = () => { 
+      const t = $('guess').value.trim(); 
+      if (t) socket.emit('guess:submit', { code: roomCode, text: t }); 
+      $('guess').value = ''; 
     };
 
-    socket.on('connect', () => { me.id = socket.id; });
-    socket.on('system:error', (m) => log('❗ ' + m));
-
-    socket.on('round:begin', () => {
-      $('qcount').textContent = 0;
-      $('turn').textContent = '–';
-      log('▶️ Round iniziato!');
+    // CHAT invio
+    $('chatSend').onclick = () => {
+      const t = $('chatInput').value.trim();
+      if (t && roomCode) {
+        socket.emit('chat:message', { code: roomCode, text: t });
+        $('chatInput').value = '';
+      }
+    };
+    $('chatInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') $('chatSend').click();
     });
 
-    socket.on('round:secret', ({ secretWord }) => log('🔒 Sei Pensatore. Parola: ' + secretWord));
+    // --- SOCKET EVENTS ---
+    socket.on('connect', () => { me.id = socket.id; });
+    socket.on('system:error', (m) => log('❗ ' + m));
+    socket.on('room:state', (s) => {
+      const meEntry = s.players.find(p => p.id === me.id);
+      if (meEntry) me.role = meEntry.role;
+      $('thinker').style.display = me.role === 'thinker' ? 'flex' : 'none';
+      log(`👥 Stanza ${s.code} — giocatori: ${s.players.map(p=>p.name + (p.role==='thinker'?'(P)':'')).join(', ')}`);
 
+      // ripopola la chat se arriva nello stato
+      if (s.chat) {
+        $('chat').innerHTML = '';
+        s.chat.forEach(chatLog);
+      }
+    });
+    socket.on('round:started', ({ maxQuestions }) => {
+      $('qcount').textContent = 0;
+      log('▶️ Round iniziato! Max ' + maxQuestions + ' domande.');
+    });
+    socket.on('round:secret', ({ secretWord }) => log('🔒 Sei Pensatore. Parola: ' + secretWord));
     socket.on('question:new', (q) => {
       $('qcount').textContent = q.id;
-      log(`❓ ${q.text}`);
+      log(`❓ (${q.byName}) ${q.text}`);
       if (me.role === 'thinker') {
         lastQuestionId = q.id;
         $('answerBox').style.display = 'flex';
       }
     });
-
     socket.on('question:update', (q) => { log(`🗣️ Risposta: ${q.answer}`); });
-
     socket.on('turn:now', ({ socketId, name }) => {
       $('turn').textContent = socketId === me.id ? 'TU' : (name || '–');
     });
+    socket.on('guess:new', (g) => log(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`));
+    socket.on('round:ended', ({ message, secretWord }) => { log('🏁 ' + message + ` (Parola: ${secretWord})`); });
 
-    socket.on('guess:new', (g) => {
-      $('qcount').textContent = g.qCount; // 🔥 aggiorna contatore con tentativi
-      log(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`);
-    });
-
-    socket.on('round:end', ({ success, msg }) => {
-      log('🏁 ' + msg);
-    });
+    // CHAT messaggi in arrivo
+    socket.on('chat:new', chatLog);
   </script>
 </body>
 </html>
