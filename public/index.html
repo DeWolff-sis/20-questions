@@ -1,58 +1,129 @@
 <!doctype html>
-<html>
+<html lang="it">
 <head>
   <meta charset="utf-8" />
   <title>20Q Multiplayer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 24px auto; }
-    .row { display:flex; gap:8px; margin:8px 0; flex-wrap: wrap; }
-    .log { border:1px solid #ddd; padding:12px; height:300px; overflow:auto; background:#fafafa; }
-    .pill { padding:2px 8px; border-radius:999px; border:1px solid #ccc; }
-    .chat { border:1px solid #ddd; padding:8px; height:150px; overflow:auto; background:#fff; margin-top:12px; }
-    .chat-input { display:flex; gap:8px; margin-top:8px; }
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .container {
+      width: 100%;
+      max-width: 900px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      padding: 24px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      margin: 8px 0;
+      flex-wrap: wrap;
+    }
+    input, button, textarea {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #5563c1;
+    }
+    .pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #f0f0f0;
+      font-size: 14px;
+    }
+    .log {
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 12px;
+      height: 240px;
+      overflow-y: auto;
+      background: #fafafa;
+      margin-top: 8px;
+    }
+    .chat {
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 12px;
+      height: 180px;
+      overflow-y: auto;
+      background: #fff;
+      margin-top: 8px;
+    }
+    @media (max-width: 600px) {
+      input, button {
+        flex: 1 1 100%;
+      }
+    }
   </style>
 </head>
 <body>
-  <h1>20 Questions (By "The Poker")</h1>
-  <div class="row">
-    <input id="name" placeholder="Il tuo nome" />
-    <input id="code" placeholder="Codice stanza (es. ABCD)" />
-    <button id="create">Crea (Pensatore)</button>
-    <button id="join">Entra</button>
-  </div>
+  <div class="container">
+    <h1>20 Questions (Multiplayer)</h1>
 
-  <div class="row" id="thinker" style="display:none;">
-    <input id="secret" placeholder="Parola segreta" />
-    <button id="start">Avvia round</button>
-  </div>
+    <div class="row">
+      <input id="name" placeholder="Il tuo nome" />
+      <input id="code" placeholder="Codice stanza (es. ABCD)" />
+      <button id="create">Crea (Pensatore)</button>
+      <button id="join">Entra</button>
+    </div>
 
-  <div class="row" id="answerBox" style="display:none;">
-    <button onclick="sendAnswer('Sì')">Sì</button>
-    <button onclick="sendAnswer('No')">No</button>
-    <button onclick="sendAnswer('Non so')">Non so</button>
-  </div>
+    <div class="row" id="thinker" style="display:none;">
+      <input id="secret" placeholder="Parola segreta" />
+      <button id="start">Avvia round</button>
+    </div>
 
-  <div class="row">
-    <span>Turno: <span id="turn" class="pill">–</span></span>
-    <span class="pill">Domande: <span id="qcount">0</span>/20</span>
-  </div>
+    <div class="row" id="answerBox" style="display:none;">
+      <button onclick="sendAnswer('Sì')">Sì</button>
+      <button onclick="sendAnswer('No')">No</button>
+      <button onclick="sendAnswer('Non so')">Non so</button>
+    </div>
 
-  <div class="row">
-    <input id="question" placeholder="Fai una domanda sì/no" />
-    <button id="ask">Chiedi</button>
-    <input id="guess" placeholder="Tenta la risposta" />
-    <button id="submitGuess">Indovina</button>
-  </div>
+    <div class="row">
+      <span class="pill">Turno: <span id="turn">–</span></span>
+      <span class="pill">Domande: <span id="qcount">0</span>/20</span>
+    </div>
 
-  <div class="log" id="log"></div>
+    <div class="row">
+      <input id="question" placeholder="Fai una domanda sì/no" />
+      <button id="ask">Chiedi</button>
+      <input id="guess" placeholder="Tenta la risposta" />
+      <button id="submitGuess">Indovina</button>
+    </div>
 
-  <!-- CHAT -->
-  <h2>Chat</h2>
-  <div class="chat" id="chatLog"></div>
-  <div class="chat-input">
-    <input id="chatMsg" placeholder="Scrivi un messaggio..." />
-    <button id="sendChat">Invia</button>
+    <div class="log" id="log"></div>
+
+    <h3>💬 Chat</h3>
+    <div class="chat" id="chat"></div>
+    <div class="row">
+      <input id="chatInput" placeholder="Scrivi un messaggio..." />
+      <button id="sendChat">Invia</button>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -61,8 +132,6 @@
     let roomCode = null;
     let me = { id: null, name: null, role: null };
     let lastQuestionId = null;
-    let questionCount = 0;
-
     const $ = (id) => document.getElementById(id);
     const log = (msg) => {
       const d = document.createElement('div');
@@ -70,11 +139,11 @@
       $('log').appendChild(d);
       $('log').scrollTop = $('log').scrollHeight;
     };
-    const chatLog = (msg, sender) => {
+    const chatLog = (msg) => {
       const d = document.createElement('div');
-      d.innerHTML = `<b>${sender}:</b> ${msg}`;
-      $('chatLog').appendChild(d);
-      $('chatLog').scrollTop = $('chatLog').scrollHeight;
+      d.textContent = msg;
+      $('chat').appendChild(d);
+      $('chat').scrollTop = $('chat').scrollHeight;
     };
 
     function sendAnswer(ans) {
@@ -95,7 +164,10 @@
       roomCode = ($('code').value || 'ABCD').toUpperCase();
       socket.emit('room:join', { code: roomCode, name: me.name });
     };
-    $('start').onclick = () => socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
+    $('start').onclick = () => {
+      socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
+      $('start').style.display = 'none'; // nasconde il pulsante una volta avviato
+    };
     $('ask').onclick = () => {
       const t = $('question').value.trim();
       if (t) socket.emit('question:ask', { code: roomCode, text: t });
@@ -107,11 +179,9 @@
       $('guess').value = '';
     };
     $('sendChat').onclick = () => {
-      const t = $('chatMsg').value.trim();
-      if (t) {
-        socket.emit('chat:message', { code: roomCode, text: t });
-        $('chatMsg').value = '';
-      }
+      const t = $('chatInput').value.trim();
+      if (t) socket.emit('chat:message', { code: roomCode, text: t });
+      $('chatInput').value = '';
     };
 
     socket.on('connect', () => { me.id = socket.id; });
@@ -122,13 +192,14 @@
       $('thinker').style.display = me.role === 'thinker' ? 'flex' : 'none';
       log(`👥 Stanza ${s.code} — giocatori: ${s.players.map(p=>p.name + (p.role==='thinker'?'(P)':'')).join(', ')}`);
     });
-    socket.on('round:started', ({ maxQuestions }) => {
-      questionCount = 0;
+    socket.on('round:started', ({ maxQuestions, players }) => {
       $('qcount').textContent = 0;
       log('▶️ Round iniziato! Max ' + maxQuestions + ' domande.');
+      if (me.role === 'thinker') $('start').style.display = 'none'; // nasconde se è thinker
     });
     socket.on('round:secret', ({ secretWord }) => log('🔒 Sei Pensatore. Parola: ' + secretWord));
     socket.on('question:new', (q) => {
+      $('qcount').textContent = q.id;
       log(`❓ (${q.byName}) ${q.text}`);
       if (me.role === 'thinker') {
         lastQuestionId = q.id;
@@ -137,10 +208,10 @@
     });
     socket.on('question:update', (q) => {
       log(`🗣️ Risposta: ${q.answer}`);
-      // ✅ aggiorna contatore solo se risposta è Sì o No
-      if (q.answer === 'Sì' || q.answer === 'No') {
-        questionCount++;
-        $('qcount').textContent = questionCount;
+      // Se la risposta è "Non so", aggiorno il contatore togliendo 1
+      if (q.answer === "Non so") {
+        let current = parseInt($('qcount').textContent) || 0;
+        $('qcount').textContent = Math.max(0, current - 1);
       }
     });
     socket.on('turn:now', ({ socketId, name }) => {
@@ -150,10 +221,8 @@
     socket.on('round:ended', ({ message, secretWord }) => {
       log('🏁 ' + message + ` (Parola: ${secretWord})`);
     });
-
-    // CHAT
-    socket.on('chat:new', (msg) => {
-      chatLog(msg.text, msg.name);
+    socket.on('chat:message', (m) => {
+      chatLog(`💬 ${m.name}: ${m.text}`);
     });
   </script>
 </body>
