@@ -22,8 +22,7 @@ function createRoom(code) {
     guesses: [],
     turnOrder: [],
     turnIdx: 0,
-    maxQuestions: 20,
-    chat: [] // 🔹 memorizziamo anche la chat della stanza
+    maxQuestions: 20
   });
 }
 
@@ -71,9 +70,8 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing') return;
     const isTurn = room.turnOrder[room.turnIdx] === socket.id;
     if (!isTurn) return socket.emit('system:error', 'Non è il tuo turno');
-    if (room.questions.length >= room.maxQuestions) return socket.emit('system:error', 'Limite di 20 domande raggiunto');
 
-    const q = { id: room.questions.length + 1, by: socket.id, text: String(text).trim(), answer: null };
+    const q = { id: Date.now(), by: socket.id, text: String(text).trim(), answer: null };
     room.questions.push(q);
     io.to(code).emit('question:new', { ...q, byName: room.players.get(socket.id)?.name });
   });
@@ -83,15 +81,23 @@ io.on('connection', (socket) => {
     if (!room || socket.id !== room.thinkerSocketId) return;
     const q = room.questions.find(x => x.id === id);
     if (!q) return;
+
     q.answer = answer;
     io.to(code).emit('question:update', q);
 
+    // ✅ Se risposta è "Non so", non contiamo questa domanda
+    if (answer === 'Non so') {
+      room.questions = room.questions.filter(x => x.id !== id);
+    }
+
+    // Passa al turno successivo
     if (room.turnOrder.length > 0) {
       room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
       const nextId = room.turnOrder[room.turnIdx];
       io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
     }
 
+    // Controllo limite solo sulle domande valide
     if (room.questions.length >= room.maxQuestions) {
       endRound(code, false, 'Domande esaurite. Nessuno ha indovinato.');
     }
@@ -107,7 +113,7 @@ io.on('connection', (socket) => {
     if (correct) endRound(code, true, `${room.players.get(socket.id)?.name} ha indovinato!`);
   });
 
-  // 🔹 CHAT FEATURE
+  // CHAT
   socket.on('chat:message', ({ code, text }) => {
     const room = rooms.get(code);
     if (!room || !room.players.has(socket.id)) return;
@@ -120,10 +126,6 @@ io.on('connection', (socket) => {
       timestamp: Date.now()
     };
 
-    // memorizziamo il messaggio in cronologia
-    room.chat.push(message);
-
-    // inviamo il messaggio a tutti i partecipanti
     io.to(code).emit('chat:new', message);
   });
 
@@ -144,23 +146,16 @@ io.on('connection', (socket) => {
     const room = rooms.get(code);
     if (!room) return;
     room.status = 'ended';
-    io.to(code).emit('round:ended', { 
-      message, 
-      secretWord: room.secretWord, 
-      questions: room.questions, 
-      guesses: room.guesses,
-      chat: room.chat // 🔹 inviamo anche la chat finale
+    io.to(code).emit('round:ended', {
+      message,
+      secretWord: room.secretWord,
+      questions: room.questions,
+      guesses: room.guesses
     });
   }
 
   function publicRoomState(room) {
-    return { 
-      code: room.code, 
-      status: room.status, 
-      players: getPlayers(room), 
-      maxQuestions: room.maxQuestions,
-      chat: room.chat // 🔹 includiamo la chat nello stato pubblico
-    };
+    return { code: room.code, status: room.status, players: getPlayers(room), maxQuestions: room.maxQuestions };
   }
 
   function getPlayers(room) {
