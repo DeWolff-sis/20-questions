@@ -92,10 +92,12 @@
     };
     $('ask').onclick = () => { const t = $('question').value.trim(); if (t) socket.emit('question:ask', { code: roomCode, text: t }); $('question').value = ''; };
     $('submitGuess').onclick = () => { const t = $('guess').value.trim(); if (t) socket.emit('guess:submit', { code: roomCode, text: t }); $('guess').value = ''; };
+
+    // Chat
     $('sendChat').onclick = () => { 
       const t = $('chatInput').value.trim(); 
       if (t) { 
-        socket.emit('chat:message', { code: roomCode, name: me.name, text: t });
+        socket.emit('chat:message', { code: roomCode, name: me.name, text: t }); 
         $('chatInput').value = ''; 
       } 
     };
@@ -134,7 +136,7 @@
     socket.on('guess:new', (g) => log(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`));
     socket.on('round:ended', ({ message, secretWord }) => { log('🏁 ' + message + ` (Parola: ${secretWord})`); });
 
-    // CHAT multiplayer
+    // Ricezione chat
     socket.on('chat:message', (m) => {
       chatLog(`💬 ${m.name}: ${m.text}`);
     });
