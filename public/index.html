@@ -5,57 +5,105 @@
   <title>20Q Multiplayer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 24px auto; padding: 0 12px; background: linear-gradient(135deg,#f0f4ff,#fafafa); }
-    h1 { text-align:center; }
-    .row { display:flex; gap:8px; margin:8px 0; flex-wrap: wrap; }
-    .log, .chat { border:1px solid #ddd; padding:12px; height:200px; overflow:auto; background:#fff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,.05); }
-    .pill { padding:2px 8px; border-radius:999px; border:1px solid #ccc; background:#fff; }
-    button { background:#4f46e5; color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; }
-    button:hover { background:#4338ca; }
-    input { flex:1; padding:6px 8px; border:1px solid #ccc; border-radius:6px; }
-    #answerBox button { flex:1; }
-    @media(max-width:600px){ body{max-width:100%;} }
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0; padding: 0;
+      background: linear-gradient(135deg, #6a11cb, #2575fc);
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 { text-align: center; color: #fff; margin-bottom: 16px; }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+    input, button {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      flex: 1;
+    }
+    button {
+      background: #2575fc;
+      color: white;
+      cursor: pointer;
+      border: none;
+    }
+    button:hover { background: #1b5fd9; }
+    .pill { padding: 2px 8px; border-radius: 999px; background: #eee; }
+    .log, .chat {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      height: 250px;
+      overflow-y: auto;
+      background: #fafafa;
+    }
+    .chat-row { display:flex; gap:8px; margin-top:8px; }
   </style>
 </head>
 <body>
-  <h1>20 Questions (By "The Poker")</h1>
-  <div class="row">
-    <input id="name" placeholder="Il tuo nome" />
-    <input id="code" placeholder="Codice stanza (es. ABCD)" />
-    <button id="create">Crea (Pensatore)</button>
-    <button id="join">Entra</button>
-  </div>
+  <div class="container">
+    <h1>20 Questions Multiplayer</h1>
 
-  <div class="row" id="thinker" style="display:none;">
-    <input id="secret" placeholder="Parola segreta" />
-    <button id="start">Avvia round</button>
-  </div>
+    <div class="card">
+      <div class="row">
+        <input id="name" placeholder="Il tuo nome" />
+        <input id="code" placeholder="Codice stanza (es. ABCD)" />
+        <button id="create">Crea (Pensatore)</button>
+        <button id="join">Entra</button>
+      </div>
+    </div>
 
-  <div class="row" id="answerBox" style="display:none;">
-    <button onclick="sendAnswer('Sì')">Sì</button>
-    <button onclick="sendAnswer('No')">No</button>
-    <button onclick="sendAnswer('Non so')">Non so</button>
-  </div>
+    <div class="card" id="thinker" style="display:none;">
+      <div class="row">
+        <input id="secret" placeholder="Parola segreta" />
+        <button id="start">Avvia round</button>
+      </div>
+    </div>
 
-  <div class="row">
-    <span>Turno: <span id="turn" class="pill">–</span></span>
-    <span class="pill">Domande: <span id="qcount">0</span>/20</span>
-  </div>
+    <div class="card" id="answerBox" style="display:none;">
+      <div class="row">
+        <button onclick="sendAnswer('Sì')">Sì</button>
+        <button onclick="sendAnswer('No')">No</button>
+        <button onclick="sendAnswer('Non so')">Non so</button>
+      </div>
+    </div>
 
-  <div class="row">
-    <input id="question" placeholder="Fai una domanda sì/no" />
-    <button id="ask">Chiedi</button>
-    <input id="guess" placeholder="Tenta la risposta" />
-    <button id="submitGuess">Indovina</button>
-  </div>
+    <div class="card">
+      <div class="row">
+        <span>Turno: <span id="turn" class="pill">–</span></span>
+        <span class="pill">Domande: <span id="qcount">0</span>/20</span>
+      </div>
+      <div class="row">
+        <input id="question" placeholder="Fai una domanda sì/no" />
+        <button id="ask">Chiedi</button>
+        <input id="guess" placeholder="Tenta la risposta" />
+        <button id="submitGuess">Indovina</button>
+      </div>
+    </div>
 
-  <div class="log" id="log"></div>
+    <div class="card">
+      <h3>Log partita</h3>
+      <div class="log" id="log"></div>
+    </div>
 
-  <h3>Chat</h3>
-  <div class="chat" id="chat"></div>
-  <div class="row">
-    <input id="chatInput" placeholder="Scrivi un messaggio..." />
-    <button id="sendChat">Invia</button>
+    <div class="card">
+      <h3>Chat</h3>
+      <div class="chat" id="chat"></div>
+      <div class="chat-row">
+        <input id="chatInput" placeholder="Scrivi un messaggio..." />
+        <button id="sendChat">Invia</button>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -64,9 +112,20 @@
     let roomCode = null;
     let me = { id: null, name: null, role: null };
     let lastQuestionId = null;
+
     const $ = (id) => document.getElementById(id);
-    const log = (msg) => { const d = document.createElement('div'); d.textContent = msg; $('log').appendChild(d); $('log').scrollTop = $('log').scrollHeight; };
-    const chatLog = (msg) => { const d = document.createElement('div'); d.textContent = msg; $('chat').appendChild(d); $('chat').scrollTop = $('chat').scrollHeight; };
+    const log = (msg) => {
+      const d = document.createElement('div');
+      d.textContent = msg;
+      $('log').appendChild(d);
+      $('log').scrollTop = $('log').scrollHeight;
+    };
+    const addChat = ({ name, text }) => {
+      const d = document.createElement('div');
+      d.innerHTML = `<b>${name}:</b> ${text}`;
+      $('chat').appendChild(d);
+      $('chat').scrollTop = $('chat').scrollHeight;
+    };
 
     function sendAnswer(ans) {
       if (lastQuestionId) {
@@ -86,60 +145,67 @@
       roomCode = ($('code').value || 'ABCD').toUpperCase();
       socket.emit('room:join', { code: roomCode, name: me.name });
     };
-    $('start').onclick = () => {
-      socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
-      $('start').style.display = 'none';
+    $('start').onclick = () => socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
+    $('ask').onclick = () => {
+      const t = $('question').value.trim();
+      if (t) socket.emit('question:ask', { code: roomCode, text: t });
+      $('question').value = '';
     };
-    $('ask').onclick = () => { const t = $('question').value.trim(); if (t) socket.emit('question:ask', { code: roomCode, text: t }); $('question').value = ''; };
-    $('submitGuess').onclick = () => { const t = $('guess').value.trim(); if (t) socket.emit('guess:submit', { code: roomCode, text: t }); $('guess').value = ''; };
-
-    // Chat
-    $('sendChat').onclick = () => { 
-      const t = $('chatInput').value.trim(); 
-      if (t) { 
-        socket.emit('chat:message', { code: roomCode, name: me.name, text: t }); 
-        $('chatInput').value = ''; 
-      } 
+    $('submitGuess').onclick = () => {
+      const t = $('guess').value.trim();
+      if (t) socket.emit('guess:submit', { code: roomCode, text: t });
+      $('guess').value = '';
+    };
+    $('sendChat').onclick = () => {
+      const t = $('chatInput').value.trim();
+      if (t) {
+        socket.emit('chat:message', { code: roomCode, name: me.name, text: t });
+        $('chatInput').value = '';
+      }
     };
 
     socket.on('connect', () => { me.id = socket.id; });
     socket.on('system:error', (m) => log('❗ ' + m));
+    socket.on('system:info', (m) => log('ℹ️ ' + m));
+
     socket.on('room:state', (s) => {
       const meEntry = s.players.find(p => p.id === me.id);
       if (meEntry) me.role = meEntry.role;
-      $('thinker').style.display = me.role === 'thinker' ? 'flex' : 'none';
+
+      // Mostra box Pensatore solo se sei thinker e round in waiting
+      $('thinker').style.display = (me.role === 'thinker' && s.status === 'waiting') ? 'block' : 'none';
+
       log(`👥 Stanza ${s.code} — giocatori: ${s.players.map(p=>p.name + (p.role==='thinker'?'(P)':'')).join(', ')}`);
     });
+
     socket.on('round:started', ({ maxQuestions }) => {
       $('qcount').textContent = 0;
+      $('thinker').style.display = 'none'; // Nascondo "avvia" durante il round
       log('▶️ Round iniziato! Max ' + maxQuestions + ' domande.');
-      if (me.role === 'thinker') $('start').style.display = 'none';
     });
+
     socket.on('round:secret', ({ secretWord }) => log('🔒 Sei Pensatore. Parola: ' + secretWord));
     socket.on('question:new', (q) => {
+      $('qcount').textContent = q.id;
       log(`❓ (${q.byName}) ${q.text}`);
       if (me.role === 'thinker') {
         lastQuestionId = q.id;
-        $('answerBox').style.display = 'flex';
+        $('answerBox').style.display = 'block';
       }
     });
-    socket.on('question:update', (q) => {
-      log(`🗣️ Risposta: ${q.answer}`);
-      if (q.answer !== "Non so") {
-        let current = parseInt($('qcount').textContent) || 0;
-        $('qcount').textContent = current + 1;
-      }
-    });
+    socket.on('question:update', (q) => { log(`🗣️ Risposta: ${q.answer}`); });
     socket.on('turn:now', ({ socketId, name }) => {
       $('turn').textContent = socketId === me.id ? 'TU' : (name || '–');
     });
-    socket.on('guess:new', (g) => log(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`));
-    socket.on('round:ended', ({ message, secretWord }) => { log('🏁 ' + message + ` (Parola: ${secretWord})`); });
-
-    // Ricezione chat
-    socket.on('chat:message', (m) => {
-      chatLog(`💬 ${m.name}: ${m.text}`);
+    socket.on('guess:new', (g) => {
+      log(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`);
+      $('qcount').textContent = parseInt($('qcount').textContent) + 1;
     });
+    socket.on('round:ended', ({ message, secretWord }) => {
+      log('🏁 ' + message + ` (Parola: ${secretWord})`);
+    });
+
+    socket.on('chat:message', (msg) => addChat(msg));
   </script>
 </body>
 </html>
