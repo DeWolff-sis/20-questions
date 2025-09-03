@@ -13,14 +13,20 @@ const rooms = new Map();
 
 function createRoom(code) {
   rooms.set(code, {
-    code, status: 'waiting', players: new Map(),
-    thinkerSocketId: null, secretWord: null,
-    questions: [], guesses: [], turnOrder: [], turnIdx: 0, maxQuestions: 20
+    code,
+    status: 'waiting',
+    players: new Map(),
+    thinkerSocketId: null,
+    secretWord: null,
+    questions: [],
+    guesses: [],
+    turnOrder: [],
+    turnIdx: 0,
+    maxQuestions: 20
   });
 }
 
 io.on('connection', (socket) => {
-
   socket.on('room:create', ({ code, name }) => {
     if (rooms.has(code)) return socket.emit('system:error', 'Codice stanza già esistente');
     createRoom(code);
@@ -46,13 +52,16 @@ io.on('connection', (socket) => {
     if (socket.id !== room.thinkerSocketId) return;
     room.secretWord = String(secretWord || '').trim();
     if (!room.secretWord) return socket.emit('system:error', 'Parola segreta vuota');
+
     room.status = 'playing';
     room.questions = [];
     room.guesses = [];
     room.turnOrder = Array.from(room.players.keys()).filter(id => id !== room.thinkerSocketId);
     room.turnIdx = 0;
+
     io.to(code).emit('round:started', { maxQuestions: room.maxQuestions, players: getPlayers(room) });
     io.to(room.thinkerSocketId).emit('round:secret', { secretWord: room.secretWord });
+
     if (room.turnOrder.length > 0) {
       const nextId = room.turnOrder[room.turnIdx];
       io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
@@ -76,6 +85,7 @@ io.on('connection', (socket) => {
     if (!room || socket.id !== room.thinkerSocketId) return;
     const q = room.questions.find(x => x.id === id);
     if (!q) return;
+
     q.answer = answer;
     io.to(code).emit('question:update', q);
 
@@ -95,12 +105,21 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing') return;
     const guess = String(text).trim();
     const correct = guess.toLowerCase() === room.secretWord.toLowerCase();
+
+    // 👉 Un tentativo vale come una domanda
+    const q = { id: room.questions.length + 1, by: socket.id, text: `(TENTATIVO) ${guess}`, answer: correct ? '✅' : '❌' };
+    room.questions.push(q);
+
     room.guesses.push({ by: socket.id, text: guess, correct });
     io.to(code).emit('guess:new', { by: socket.id, name: room.players.get(socket.id)?.name, text: guess, correct });
-    if (correct) endRound(code, true, `${room.players.get(socket.id)?.name} ha indovinato!`);
+
+    if (correct) {
+      endRound(code, true, `${room.players.get(socket.id)?.name} ha indovinato!`);
+    } else if (room.questions.length >= room.maxQuestions) {
+      endRound(code, false, 'Domande esaurite. Nessuno ha indovinato.');
+    }
   });
 
-  // CHAT: gestione messaggi
   socket.on("chat:message", ({ code, name, text }) => {
     io.to(code).emit("chat:message", { name, text });
   });
@@ -123,15 +142,41 @@ io.on('connection', (socket) => {
     if (!room) return;
     room.status = 'ended';
     io.to(code).emit('round:ended', { message, secretWord: room.secretWord, questions: room.questions, guesses: room.guesses });
+
+    // 👉 Rotazione Pensatore
+    if (room.turnOrder.length > 0) {
+      room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
+      const newThinkerId = room.turnOrder[room.turnIdx];
+      room.thinkerSocketId = newThinkerId;
+
+      // Aggiorna ruoli
+      for (const [id, player] of room.players) {
+        player.role = (id === newThinkerId) ? 'thinker' : 'guesser';
+      }
+
+      // Stanza torna in "waiting" in attesa della nuova parola
+      room.status = 'waiting';
+      room.secretWord = null;
+
+      io.to(code).emit('room:state', publicRoomState(room));
+      io.to(newThinkerId).emit('system:info', 'Ora sei il nuovo Pensatore! Inserisci una parola segreta e avvia il prossimo round.');
+    }
   }
 
   function publicRoomState(room) {
-    return { code: room.code, status: room.status, players: getPlayers(room), maxQuestions: room.maxQuestions };
-  }
-  function getPlayers(room) {
-    return Array.from(room.players.entries()).map(([id, p]) => ({ id, name: p.name, role: p.role }));
+    return {
+      code: room.code,
+      status: room.status,
+      players: getPlayers(room),
+      maxQuestions: room.maxQuestions
+    };
   }
 
+  function getPlayers(room) {
+    return Array.from(room.players.entries()).map(([id, p]) => ({
+      id, name: p.name, role: p.role
+    }));
+  }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
