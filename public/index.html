@@ -11,41 +11,25 @@
       background: linear-gradient(135deg, #6a11cb, #2575fc);
       color: #333;
     }
-    .container {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 20px;
-    }
+    .container { max-width: 900px; margin: 0 auto; padding: 20px; }
     h1 { text-align: center; color: #fff; margin-bottom: 16px; }
     .card {
-      background: #fff;
-      border-radius: 16px;
+      background: #fff; border-radius: 16px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      padding: 20px;
-      margin-bottom: 20px;
+      padding: 20px; margin-bottom: 20px;
     }
     .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
     input, button {
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      flex: 1;
+      padding: 10px; border-radius: 8px; border: 1px solid #ccc; flex: 1;
     }
     button {
-      background: #2575fc;
-      color: white;
-      cursor: pointer;
-      border: none;
+      background: #2575fc; color: white; cursor: pointer; border: none;
     }
     button:hover { background: #1b5fd9; }
     .pill { padding: 2px 8px; border-radius: 999px; background: #eee; }
     .log, .chat {
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 12px;
-      height: 250px;
-      overflow-y: auto;
-      background: #fafafa;
+      border: 1px solid #ddd; border-radius: 8px;
+      padding: 12px; height: 250px; overflow-y: auto; background: #fafafa;
     }
     .chat-row { display:flex; gap:8px; margin-top:8px; }
   </style>
@@ -78,12 +62,12 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="gameArea">
       <div class="row">
         <span>Turno: <span id="turn" class="pill">–</span></span>
         <span class="pill">Domande: <span id="qcount">0</span>/20</span>
       </div>
-      <div class="row">
+      <div class="row" id="guessArea">
         <input id="question" placeholder="Fai una domanda sì/no" />
         <button id="ask">Chiedi</button>
         <input id="guess" placeholder="Tenta la risposta" />
@@ -172,15 +156,15 @@
       const meEntry = s.players.find(p => p.id === me.id);
       if (meEntry) me.role = meEntry.role;
 
-      // Mostra box Pensatore solo se sei thinker e round in waiting
       $('thinker').style.display = (me.role === 'thinker' && s.status === 'waiting') ? 'block' : 'none';
+      $('guessArea').style.display = (me.role === 'thinker') ? 'none' : 'flex';
 
       log(`👥 Stanza ${s.code} — giocatori: ${s.players.map(p=>p.name + (p.role==='thinker'?'(P)':'')).join(', ')}`);
     });
 
     socket.on('round:started', ({ maxQuestions }) => {
       $('qcount').textContent = 0;
-      $('thinker').style.display = 'none'; // Nascondo "avvia" durante il round
+      $('thinker').style.display = 'none';
       log('▶️ Round iniziato! Max ' + maxQuestions + ' domande.');
     });
 
