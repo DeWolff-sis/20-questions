@@ -89,10 +89,15 @@ io.on('connection', (socket) => {
     q.answer = answer;
     io.to(code).emit('question:update', q);
 
-    if (answer !== "Non so") {
-      room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
-      const nextId = room.turnOrder[room.turnIdx];
-      io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
+    // 👉 Se "Non so", non si conta come domanda
+    if (answer === "Non so") {
+      room.questions = room.questions.filter(x => x.id !== id);
+    } else {
+      if (room.turnOrder.length > 0) {
+        room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
+        const nextId = room.turnOrder[room.turnIdx];
+        io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
+      }
     }
 
     if (room.questions.length >= room.maxQuestions) {
@@ -106,7 +111,7 @@ io.on('connection', (socket) => {
     const guess = String(text).trim();
     const correct = guess.toLowerCase() === room.secretWord.toLowerCase();
 
-    // 👉 Un tentativo vale come una domanda
+    // 👉 Un tentativo vale come domanda
     const q = { id: room.questions.length + 1, by: socket.id, text: `(TENTATIVO) ${guess}`, answer: correct ? '✅' : '❌' };
     room.questions.push(q);
 
@@ -149,12 +154,10 @@ io.on('connection', (socket) => {
       const newThinkerId = room.turnOrder[room.turnIdx];
       room.thinkerSocketId = newThinkerId;
 
-      // Aggiorna ruoli
       for (const [id, player] of room.players) {
         player.role = (id === newThinkerId) ? 'thinker' : 'guesser';
       }
 
-      // Stanza torna in "waiting" in attesa della nuova parola
       room.status = 'waiting';
       room.secretWord = null;
 
