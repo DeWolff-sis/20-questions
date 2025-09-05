@@ -15,23 +15,15 @@ function createRoom(code) {
   rooms.set(code, {
     code, status: 'waiting', players: new Map(),
     thinkerSocketId: null, secretWord: null,
-    questions: [], guesses: [], turnOrder: [], turnIdx: 0, maxQuestions: 20
+    questions: [], guesses: [], turnOrder: [], turnIdx: 0, maxQuestions: 20, asked: 0
   });
-  broadcastRooms();
-}
-
-function broadcastRooms() {
-  const list = Array.from(rooms.values()).map(r => ({
-    code: r.code,
-    status: r.status,
-    players: r.players.size
-  }));
-  io.emit('rooms:update', list);
 }
 
 io.on('connection', (socket) => {
   socket.on('rooms:list', () => {
-    broadcastRooms();
+    io.emit('rooms:update', Array.from(rooms.values()).map(r => ({
+      code: r.code, players: r.players.size, status: r.status
+    })));
   });
 
   socket.on('room:create', ({ code, name }) => {
@@ -42,7 +34,7 @@ io.on('connection', (socket) => {
     room.thinkerSocketId = socket.id;
     socket.join(code);
     io.to(code).emit('room:state', publicRoomState(room));
-    broadcastRooms();
+    io.emit('rooms:update', getRoomsList());
   });
 
   socket.on('room:join', ({ code, name }) => {
@@ -52,7 +44,7 @@ io.on('connection', (socket) => {
     room.players.set(socket.id, { name, role: 'guesser' });
     socket.join(code);
     io.to(code).emit('room:state', publicRoomState(room));
-    broadcastRooms();
+    io.emit('rooms:update', getRoomsList());
   });
 
   socket.on('room:leave', ({ code }) => {
@@ -60,11 +52,9 @@ io.on('connection', (socket) => {
     if (!room) return;
     room.players.delete(socket.id);
     socket.leave(code);
-    if (room.players.size === 0) {
-      rooms.delete(code);
-    }
-    io.to(code).emit('room:state', publicRoomState(room));
-    broadcastRooms();
+    if (room.players.size === 0) rooms.delete(code);
+    else io.to(code).emit('room:state', publicRoomState(room));
+    io.emit('rooms:update', getRoomsList());
   });
 
   socket.on('round:start', ({ code, secretWord }) => {
@@ -78,13 +68,14 @@ io.on('connection', (socket) => {
     room.guesses = [];
     room.turnOrder = Array.from(room.players.keys()).filter(id => id !== room.thinkerSocketId);
     room.turnIdx = 0;
+    room.asked = 0;
     io.to(code).emit('round:started', { maxQuestions: room.maxQuestions, players: getPlayers(room) });
     io.to(room.thinkerSocketId).emit('round:secret', { secretWord: room.secretWord });
     if (room.turnOrder.length > 0) {
       const nextId = room.turnOrder[room.turnIdx];
       io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
     }
-    broadcastRooms();
+    io.emit('rooms:update', getRoomsList());
   });
 
   socket.on('question:ask', ({ code, text }) => {
@@ -92,7 +83,7 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing') return;
     const isTurn = room.turnOrder[room.turnIdx] === socket.id;
     if (!isTurn) return socket.emit('system:error', 'Non è il tuo turno');
-    if (room.questions.length >= room.maxQuestions) return socket.emit('system:error', 'Limite di domande raggiunto');
+    if (room.asked >= room.maxQuestions) return socket.emit('system:error', 'Limite di 20 domande raggiunto');
 
     const q = { id: room.questions.length + 1, by: socket.id, text: String(text).trim(), answer: null };
     room.questions.push(q);
@@ -107,13 +98,18 @@ io.on('connection', (socket) => {
     q.answer = answer;
     io.to(code).emit('question:update', q);
 
+    if (answer !== 'Non so') {
+      room.asked++;
+      io.to(code).emit('counter:update', { asked: room.asked, max: room.maxQuestions });
+    }
+
     if (room.turnOrder.length > 0) {
       room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
       const nextId = room.turnOrder[room.turnIdx];
       io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
     }
 
-    if (room.questions.length >= room.maxQuestions) {
+    if (room.asked >= room.maxQuestions) {
       endRound(code, false, 'Domande esaurite. Nessuno ha indovinato.');
     }
   });
@@ -125,10 +121,20 @@ io.on('connection', (socket) => {
     const correct = guess.toLowerCase() === room.secretWord.toLowerCase();
     room.guesses.push({ by: socket.id, text: guess, correct });
     io.to(code).emit('guess:new', { by: socket.id, name: room.players.get(socket.id)?.name, text: guess, correct });
+
+    // il tentativo conta come domanda
+    room.asked++;
+    io.to(code).emit('counter:update', { asked: room.asked, max: room.maxQuestions });
+
     if (correct) endRound(code, true, `${room.players.get(socket.id)?.name} ha indovinato!`);
+    else if (room.asked >= room.maxQuestions) {
+      endRound(code, false, 'Domande esaurite. Nessuno ha indovinato.');
+    }
   });
 
   socket.on('chat:message', ({ code, name, text }) => {
+    const room = rooms.get(code);
+    if (!room) return;
     io.to(code).emit('chat:message', { name, text });
   });
 
@@ -143,7 +149,7 @@ io.on('connection', (socket) => {
         io.to(code).emit('room:state', publicRoomState(room));
       }
     }
-    broadcastRooms();
+    io.emit('rooms:update', getRoomsList());
   });
 
   function endRound(code, someoneWon, message) {
@@ -151,7 +157,6 @@ io.on('connection', (socket) => {
     if (!room) return;
     room.status = 'ended';
     io.to(code).emit('round:ended', { message, secretWord: room.secretWord, questions: room.questions, guesses: room.guesses });
-    broadcastRooms();
   }
 
   function publicRoomState(room) {
@@ -159,6 +164,11 @@ io.on('connection', (socket) => {
   }
   function getPlayers(room) {
     return Array.from(room.players.entries()).map(([id, p]) => ({ id, name: p.name, role: p.role }));
+  }
+  function getRoomsList() {
+    return Array.from(rooms.values()).map(r => ({
+      code: r.code, players: r.players.size, status: r.status
+    }));
   }
 });
 
