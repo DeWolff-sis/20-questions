@@ -13,20 +13,27 @@ const rooms = new Map();
 
 function createRoom(code) {
   rooms.set(code, {
-    code,
-    status: 'waiting',
-    players: new Map(),
-    thinkerSocketId: null,
-    secretWord: null,
-    questions: [],
-    guesses: [],
-    turnOrder: [],
-    turnIdx: 0,
-    maxQuestions: 20
+    code, status: 'waiting', players: new Map(),
+    thinkerSocketId: null, secretWord: null,
+    questions: [], guesses: [], turnOrder: [], turnIdx: 0, maxQuestions: 20
   });
+  broadcastRooms();
+}
+
+function broadcastRooms() {
+  const list = Array.from(rooms.values()).map(r => ({
+    code: r.code,
+    status: r.status,
+    players: r.players.size
+  }));
+  io.emit('rooms:update', list);
 }
 
 io.on('connection', (socket) => {
+  socket.on('rooms:list', () => {
+    broadcastRooms();
+  });
+
   socket.on('room:create', ({ code, name }) => {
     if (rooms.has(code)) return socket.emit('system:error', 'Codice stanza già esistente');
     createRoom(code);
@@ -35,6 +42,7 @@ io.on('connection', (socket) => {
     room.thinkerSocketId = socket.id;
     socket.join(code);
     io.to(code).emit('room:state', publicRoomState(room));
+    broadcastRooms();
   });
 
   socket.on('room:join', ({ code, name }) => {
@@ -44,6 +52,19 @@ io.on('connection', (socket) => {
     room.players.set(socket.id, { name, role: 'guesser' });
     socket.join(code);
     io.to(code).emit('room:state', publicRoomState(room));
+    broadcastRooms();
+  });
+
+  socket.on('room:leave', ({ code }) => {
+    const room = rooms.get(code);
+    if (!room) return;
+    room.players.delete(socket.id);
+    socket.leave(code);
+    if (room.players.size === 0) {
+      rooms.delete(code);
+    }
+    io.to(code).emit('room:state', publicRoomState(room));
+    broadcastRooms();
   });
 
   socket.on('round:start', ({ code, secretWord }) => {
@@ -52,20 +73,18 @@ io.on('connection', (socket) => {
     if (socket.id !== room.thinkerSocketId) return;
     room.secretWord = String(secretWord || '').trim();
     if (!room.secretWord) return socket.emit('system:error', 'Parola segreta vuota');
-
     room.status = 'playing';
     room.questions = [];
     room.guesses = [];
     room.turnOrder = Array.from(room.players.keys()).filter(id => id !== room.thinkerSocketId);
     room.turnIdx = 0;
-
     io.to(code).emit('round:started', { maxQuestions: room.maxQuestions, players: getPlayers(room) });
     io.to(room.thinkerSocketId).emit('round:secret', { secretWord: room.secretWord });
-
     if (room.turnOrder.length > 0) {
       const nextId = room.turnOrder[room.turnIdx];
       io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
     }
+    broadcastRooms();
   });
 
   socket.on('question:ask', ({ code, text }) => {
@@ -73,7 +92,7 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing') return;
     const isTurn = room.turnOrder[room.turnIdx] === socket.id;
     if (!isTurn) return socket.emit('system:error', 'Non è il tuo turno');
-    if (room.questions.length >= room.maxQuestions) return socket.emit('system:error', 'Limite di 20 domande raggiunto');
+    if (room.questions.length >= room.maxQuestions) return socket.emit('system:error', 'Limite di domande raggiunto');
 
     const q = { id: room.questions.length + 1, by: socket.id, text: String(text).trim(), answer: null };
     room.questions.push(q);
@@ -85,19 +104,13 @@ io.on('connection', (socket) => {
     if (!room || socket.id !== room.thinkerSocketId) return;
     const q = room.questions.find(x => x.id === id);
     if (!q) return;
-
     q.answer = answer;
     io.to(code).emit('question:update', q);
 
-    // 👉 Se "Non so", non si conta come domanda
-    if (answer === "Non so") {
-      room.questions = room.questions.filter(x => x.id !== id);
-    } else {
-      if (room.turnOrder.length > 0) {
-        room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
-        const nextId = room.turnOrder[room.turnIdx];
-        io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
-      }
+    if (room.turnOrder.length > 0) {
+      room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
+      const nextId = room.turnOrder[room.turnIdx];
+      io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
     }
 
     if (room.questions.length >= room.maxQuestions) {
@@ -110,23 +123,13 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing') return;
     const guess = String(text).trim();
     const correct = guess.toLowerCase() === room.secretWord.toLowerCase();
-
-    // 👉 Un tentativo vale come domanda
-    const q = { id: room.questions.length + 1, by: socket.id, text: `(TENTATIVO) ${guess}`, answer: correct ? '✅' : '❌' };
-    room.questions.push(q);
-
     room.guesses.push({ by: socket.id, text: guess, correct });
     io.to(code).emit('guess:new', { by: socket.id, name: room.players.get(socket.id)?.name, text: guess, correct });
-
-    if (correct) {
-      endRound(code, true, `${room.players.get(socket.id)?.name} ha indovinato!`);
-    } else if (room.questions.length >= room.maxQuestions) {
-      endRound(code, false, 'Domande esaurite. Nessuno ha indovinato.');
-    }
+    if (correct) endRound(code, true, `${room.players.get(socket.id)?.name} ha indovinato!`);
   });
 
-  socket.on("chat:message", ({ code, name, text }) => {
-    io.to(code).emit("chat:message", { name, text });
+  socket.on('chat:message', ({ code, name, text }) => {
+    io.to(code).emit('chat:message', { name, text });
   });
 
   socket.on('disconnect', () => {
@@ -140,6 +143,7 @@ io.on('connection', (socket) => {
         io.to(code).emit('room:state', publicRoomState(room));
       }
     }
+    broadcastRooms();
   });
 
   function endRound(code, someoneWon, message) {
@@ -147,38 +151,14 @@ io.on('connection', (socket) => {
     if (!room) return;
     room.status = 'ended';
     io.to(code).emit('round:ended', { message, secretWord: room.secretWord, questions: room.questions, guesses: room.guesses });
-
-    // 👉 Rotazione Pensatore
-    if (room.turnOrder.length > 0) {
-      room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
-      const newThinkerId = room.turnOrder[room.turnIdx];
-      room.thinkerSocketId = newThinkerId;
-
-      for (const [id, player] of room.players) {
-        player.role = (id === newThinkerId) ? 'thinker' : 'guesser';
-      }
-
-      room.status = 'waiting';
-      room.secretWord = null;
-
-      io.to(code).emit('room:state', publicRoomState(room));
-      io.to(newThinkerId).emit('system:info', 'Ora sei il nuovo Pensatore! Inserisci una parola segreta e avvia il prossimo round.');
-    }
+    broadcastRooms();
   }
 
   function publicRoomState(room) {
-    return {
-      code: room.code,
-      status: room.status,
-      players: getPlayers(room),
-      maxQuestions: room.maxQuestions
-    };
+    return { code: room.code, status: room.status, players: getPlayers(room), maxQuestions: room.maxQuestions };
   }
-
   function getPlayers(room) {
-    return Array.from(room.players.entries()).map(([id, p]) => ({
-      id, name: p.name, role: p.role
-    }));
+    return Array.from(room.players.entries()).map(([id, p]) => ({ id, name: p.name, role: p.role }));
   }
 });
 
