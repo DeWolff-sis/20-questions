@@ -6,179 +6,169 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(__dirname + '/public'));
+app.use(express.static('public'));
 
-let rooms = {};
+const rooms = new Map();
 
-function getActiveRooms() {
-  return Object.values(rooms).map(r => ({
-    code: r.code,
-    players: r.players.length
-  }));
+function endRound(code, guesserId, reason) {
+  const room = rooms.get(code);
+  if (!room) return;
+
+  const secretWord = room.secret;
+  const guesser = guesserId || null;
+
+  io.to(code).emit('round:ended', {
+    message: reason,
+    secretWord,
+    guesser
+  });
+
+  room.status = 'waiting';
+  room.secret = '';
+  room.questions = [];
+  room.awaitingAnswer = false;
+  room.turnIdx = 0;
 }
 
 io.on('connection', (socket) => {
-  socket.on('room:create', ({ code, name }) => {
-    if (!rooms[code]) {
-      rooms[code] = {
-        code,
-        players: [],
-        log: [],
-        chat: [],
-        secretWord: null,
-        currentTurn: 0,
-        questionCount: 0,
-        maxQuestions: 20,
-        roundActive: false,
-        finalGuesses: {},
-        thinkerIndex: 0
-      };
-    }
-    const player = { id: socket.id, name, role: 'thinker' };
-    rooms[code].players.push(player);
+  socket.on('room:create', ({ name, code }) => {
+    if (rooms.has(code)) return socket.emit('system:error', 'Codice stanza già esistente');
+    rooms.set(code, {
+      code,
+      players: new Map([[socket.id, { id: socket.id, name, role: 'thinker' }]]),
+      thinkerSocketId: socket.id,
+      secret: '',
+      questions: [],
+      maxQuestions: 20,
+      awaitingAnswer: false,
+      status: 'waiting',
+      turnOrder: [],
+      turnIdx: 0,
+    });
     socket.join(code);
-    io.to(code).emit('room:state', rooms[code]);
-    io.emit('rooms:list', getActiveRooms());
-    addLog(code, `👤 ${name} è entrato (Pensatore)`);
+    socket.emit('room:joined', { code, role: 'thinker' });
+    io.emit('rooms:update', Array.from(rooms.values()).map(r => ({
+      code: r.code,
+      count: r.players.size
+    })));
   });
 
-  socket.on('room:join', ({ code, name }) => {
-    const room = rooms[code];
-    if (!room) {
-      socket.emit('system:error', 'Stanza non trovata');
-      return;
-    }
-    const player = { id: socket.id, name, role: 'guesser' };
-    room.players.push(player);
+  socket.on('room:join', ({ name, code }) => {
+    const room = rooms.get(code);
+    if (!room) return socket.emit('system:error', 'Stanza non trovata');
+    room.players.set(socket.id, { id: socket.id, name, role: 'guesser' });
     socket.join(code);
-    socket.emit('room:state', room);
-    socket.emit('log:history', room.log);
-    socket.emit('chat:history', room.chat);
-    io.to(code).emit('room:state', room);
-    io.emit('rooms:list', getActiveRooms());
-    addLog(code, `👤 ${name} è entrato`);
+    io.to(code).emit('log', `${name} è entrato nella stanza.`);
+    socket.emit('room:joined', { code, role: 'guesser' });
+    io.emit('rooms:update', Array.from(rooms.values()).map(r => ({
+      code: r.code,
+      count: r.players.size
+    })));
   });
 
-  socket.on('disconnect', () => {
-    for (const code in rooms) {
-      const room = rooms[code];
-      const idx = room.players.findIndex(p => p.id === socket.id);
-      if (idx !== -1) {
-        const [player] = room.players.splice(idx, 1);
-        addLog(code, `👋 ${player.name} ha lasciato`);
-        io.to(code).emit('room:state', room);
-        if (room.players.length === 0) delete rooms[code];
-        io.emit('rooms:list', getActiveRooms());
-      }
-    }
-  });
-
-  socket.on('round:start', ({ code, secretWord }) => {
-    const room = rooms[code];
+  socket.on('room:leave', ({ code }) => {
+    const room = rooms.get(code);
     if (!room) return;
-    room.secretWord = secretWord;
-    room.roundActive = true;
-    room.questionCount = 0;
-    room.finalGuesses = {};
-    io.to(code).emit('round:started', { maxQuestions: room.maxQuestions, players: room.players });
-    const thinker = room.players.find(p => p.role === 'thinker');
-    io.to(thinker.id).emit('round:secret', { secretWord });
-    nextTurn(code);
+    const player = room.players.get(socket.id);
+    if (player) {
+      io.to(code).emit('log', `${player.name} ha lasciato la stanza.`);
+      room.players.delete(socket.id);
+    }
+    socket.leave(code);
+    if (room.players.size === 0) rooms.delete(code);
+    io.emit('rooms:update', Array.from(rooms.values()).map(r => ({
+      code: r.code,
+      count: r.players.size
+    })));
+  });
+
+  socket.on('game:start', ({ code, secret }) => {
+    const room = rooms.get(code);
+    if (!room || socket.id !== room.thinkerSocketId) return;
+    room.secret = secret;
+    room.questions = [];
+    room.turnOrder = Array.from(room.players.keys()).filter(id => id !== room.thinkerSocketId);
+    room.turnIdx = 0;
+    room.awaitingAnswer = false;
+    room.status = 'playing';
+    io.to(code).emit('game:started', { secretLen: secret.length });
+    if (room.turnOrder.length > 0) {
+      const first = room.turnOrder[0];
+      io.to(code).emit('turn:now', { socketId: first, name: room.players.get(first)?.name });
+    }
   });
 
   socket.on('question:ask', ({ code, text }) => {
-    const room = rooms[code];
-    if (!room || !room.roundActive) return;
-    room.questionCount++;
-    const q = { id: room.questionCount, byId: socket.id, byName: getPlayerName(room, socket.id), text };
-    io.to(code).emit('question:new', q);
+    const room = rooms.get(code);
+    if (!room || room.status !== 'playing') return;
+    const isTurn = room.turnOrder[room.turnIdx] === socket.id;
+    if (!isTurn) return socket.emit('system:error', 'Non è il tuo turno');
+    if (room.awaitingAnswer) return socket.emit('system:error', 'Attendi la risposta prima di fare un\'altra domanda');
+    if (room.questions.length >= room.maxQuestions) {
+      return socket.emit('system:error', 'Limite di domande raggiunto');
+    }
+
+    const q = { id: room.questions.length + 1, by: socket.id, text: String(text).trim(), answer: null };
+    room.questions.push(q);
+    room.awaitingAnswer = true;
+    io.to(code).emit('question:new', { ...q, byName: room.players.get(socket.id)?.name });
   });
 
   socket.on('question:answer', ({ code, id, answer }) => {
-    const room = rooms[code];
-    if (!room) return;
+    const room = rooms.get(code);
+    if (!room || socket.id !== room.thinkerSocketId) return;
+    const q = room.questions.find(x => x.id === id);
+    if (!q) return;
+    q.answer = answer;
+    io.to(code).emit('question:update', q);
+
+    room.awaitingAnswer = false;
+
     if (answer !== 'Non so') {
-      // domanda valida
-    } else {
-      room.questionCount--; // Non so non conta
+      room.turnIdx = (room.turnIdx + 1) % room.turnOrder.length;
+      const nextId = room.turnOrder[room.turnIdx];
+      io.to(code).emit('turn:now', { socketId: nextId, name: room.players.get(nextId)?.name });
     }
-    io.to(code).emit('question:update', { id, answer });
-    if (room.questionCount >= room.maxQuestions) {
-      addLog(code, '⚠️ Limite domande raggiunto, iniziano i tentativi finali!');
-      room.players.forEach(p => {
-        if (p.role !== 'thinker') room.finalGuesses[p.id] = 2;
-      });
-    } else {
-      nextTurn(code);
+
+    // ✅ Fine domande
+    if (room.questions.length >= room.maxQuestions) {
+      endRound(code, null, 'Domande esaurite. Nessuno ha indovinato.');
     }
   });
 
-  socket.on('guess:submit', ({ code, text }) => {
-    const room = rooms[code];
-    if (!room || !room.roundActive) return;
-    room.questionCount++;
-    const player = getPlayer(room, socket.id);
-    const correct = (text.toLowerCase() === room.secretWord.toLowerCase());
-
-    io.to(code).emit('guess:new', { id: socket.id, name: player.name, text, correct });
-
+  socket.on('guess:try', ({ code, guess }) => {
+    const room = rooms.get(code);
+    if (!room || room.status !== 'playing') return;
+    const correct = guess.toLowerCase().trim() === room.secret.toLowerCase().trim();
     if (correct) {
-      endRound(code, `${player.name} ha indovinato!`, socket.id);
+      endRound(code, socket.id, `${room.players.get(socket.id)?.name} ha indovinato!`);
     } else {
-      if (room.finalGuesses[player.id] !== undefined) {
-        room.finalGuesses[player.id]--;
-        addLog(code, `❌ ${player.name} ha sbagliato. Tentativi rimasti: ${room.finalGuesses[player.id]}`);
-        if (room.finalGuesses[player.id] <= 0) delete room.finalGuesses[player.id];
-        if (Object.keys(room.finalGuesses).length === 0) {
-          endRound(code, 'Nessuno ha indovinato!', null);
-        }
-      }
-      nextTurn(code);
+      io.to(code).emit('guess:wrong', { by: socket.id, name: room.players.get(socket.id)?.name, guess });
     }
   });
 
-  socket.on('chat:send', ({ code, name, text }) => {
-    const room = rooms[code];
+  socket.on('chat:send', ({ code, text }) => {
+    const room = rooms.get(code);
     if (!room) return;
-    const msg = { name, text };
-    room.chat.push(msg);
-    io.to(code).emit('chat:new', msg);
+    const player = room.players.get(socket.id);
+    if (!player) return;
+    io.to(code).emit('chat:new', { from: player.name, text });
+  });
+
+  socket.on('disconnect', () => {
+    rooms.forEach((room, code) => {
+      if (room.players.has(socket.id)) {
+        const name = room.players.get(socket.id).name;
+        room.players.delete(socket.id);
+        io.to(code).emit('log', `${name} si è disconnesso.`);
+        if (room.players.size === 0) rooms.delete(code);
+      }
+    });
+    io.emit('rooms:update', Array.from(rooms.values()).map(r => ({
+      code: r.code,
+      count: r.players.size
+    })));
   });
 });
 
-function nextTurn(code) {
-  const room = rooms[code];
-  if (!room) return;
-  const guessers = room.players.filter(p => p.role !== 'thinker');
-  if (guessers.length === 0) return;
-  room.currentTurn = (room.currentTurn + 1) % guessers.length;
-  const now = guessers[room.currentTurn];
-  io.to(code).emit('turn:now', { socketId: now.id, name: now.name });
-}
-
-function endRound(code, message, guesserId) {
-  const room = rooms[code];
-  if (!room) return;
-  room.roundActive = false;
-  io.to(code).emit('round:ended', { message, secretWord: room.secretWord, guesser: guesserId });
-  // ruota pensatore
-  room.thinkerIndex = (room.thinkerIndex + 1) % room.players.length;
-  room.players.forEach((p, i) => p.role = (i === room.thinkerIndex ? 'thinker' : 'guesser'));
-}
-
-function addLog(code, msg) {
-  const room = rooms[code];
-  if (!room) return;
-  room.log.push(msg);
-  io.to(code).emit('log:new', msg);
-}
-
-function getPlayer(room, id) {
-  return room.players.find(p => p.id === id);
-}
-function getPlayerName(room, id) {
-  const p = getPlayer(room, id);
-  return p ? p.name : '??';
-}
-
-server.listen(3000, () => console.log('Server running on http://localhost:3000'));
+server.listen(3000, () => console.log('Server avviato su http://localhost:3000'));
