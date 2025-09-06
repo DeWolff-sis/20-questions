@@ -1,89 +1,164 @@
 <!doctype html>
-<html>
+<html lang="it">
 <head>
   <meta charset="utf-8" />
   <title>20Q Multiplayer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; background: linear-gradient(135deg,#f9fafb,#e5e7eb); color:#111; }
-    .container { max-width: 900px; margin: 0 auto; padding: 16px; }
-    h1 { text-align:center; margin:16px 0; }
-    .card { background:white; border-radius:12px; padding:16px; margin:12px 0; box-shadow:0 2px 6px rgba(0,0,0,0.1); }
-    .row { display:flex; gap:8px; margin:8px 0; flex-wrap:wrap; }
-    input, button { padding:8px 12px; border-radius:8px; border:1px solid #ccc; font-size:14px; }
-    button { background:#2563eb; color:white; border:none; cursor:pointer; transition:background 0.2s; }
-    button:hover { background:#1e40af; }
-    .pill { padding:2px 8px; border-radius:999px; background:#f3f4f6; }
-    .log, .chat-box { border:1px solid #ddd; border-radius:8px; padding:12px; height:200px; overflow:auto; background:#fafafa; }
-    .progress { height:20px; border-radius:8px; overflow:hidden; background:#e5e7eb; margin-top:8px; }
-    .progress-bar { height:100%; background:#2563eb; width:0%; transition:width 0.3s; }
-    .hidden { display:none !important; }
-    #overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); display:none; justify-content:center; align-items:center; z-index:1000; color:white; text-align:center; padding:20px; }
-    #overlay .content { background:#111; padding:24px; border-radius:12px; max-width:500px; }
-    #overlay h2 { margin-bottom:16px; }
-    #overlay button { margin:4px; font-size:18px; padding:12px 20px; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f4f6f9;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      max-width: 900px;
+      width: 100%;
+      padding: 16px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .hidden { display: none !important; }
+    .row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+    input, button {
+      padding: 8px;
+      font-size: 16px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #4a90e2;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover { background: #357ABD; }
+    .log, .chat-box {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: white;
+      padding: 8px;
+      height: 200px;
+      overflow-y: auto;
+      margin-bottom: 8px;
+    }
+    .pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid #ccc;
+      background: #fff;
+    }
+    #questionProgress {
+      width: 100%;
+      height: 20px;
+    }
+    #answerOverlay, #resultOverlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 1000;
+      text-align: center;
+      padding: 16px;
+    }
+    #answerOverlay button {
+      font-size: 24px;
+      margin: 8px;
+    }
+    #resultOverlay.win { background: rgba(0,128,0,0.8); }
+    #resultOverlay.lose { background: rgba(128,0,0,0.8); }
+    #secret[readonly] {
+      background: #e0e0e0;
+    }
+    .room-list {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+      padding: 8px;
+      margin-top: 8px;
+    }
+    .room-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px;
+      border-bottom: 1px solid #eee;
+    }
+    .room-item:last-child { border-bottom: none; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>20Q Multiplayer</h1>
+    <h1>20 Questions Multiplayer</h1>
 
-    <!-- HOME -->
-    <div id="home" class="card">
+    <!-- Home -->
+    <div id="home">
       <div class="row">
         <input id="name" placeholder="Il tuo nome" />
         <input id="code" placeholder="Codice stanza (es. ABCD)" />
         <button id="create">Crea (Pensatore)</button>
+        <button id="join">Entra</button>
       </div>
-      <h3>Stanze attive</h3>
-      <div id="rooms"><i>Nessuna stanza attiva al momento.</i></div>
+      <div id="roomList" class="room-list">
+        <p id="noRooms">Nessuna stanza attiva</p>
+        <div id="rooms"></div>
+      </div>
     </div>
 
-    <!-- GAME -->
-    <div id="game" class="card hidden">
+    <!-- Gioco -->
+    <div id="game" class="hidden">
       <div class="row">
-        <button id="leave">⬅️ Esci</button>
-        <span class="pill">Turno: <span id="turn">–</span></span>
-        <span class="pill">Domande: <span id="qcount">0</span>/<span id="qmax">20</span></span>
+        <button id="exit">⬅️ Esci</button>
       </div>
-
-      <div class="progress"><div class="progress-bar" id="progress"></div></div>
-
-      <div id="thinker" class="row hidden">
+      <div class="row" id="thinker">
         <input id="secret" placeholder="Parola segreta" />
         <button id="start">Avvia round</button>
       </div>
 
-      <div id="actions" class="row">
+      <div class="row">
+        <span>Turno: <span id="turn" class="pill">–</span></span>
+        <span class="pill">Domande: <span id="qcount">0</span>/20</span>
+      </div>
+      <progress id="questionProgress" value="0" max="20"></progress>
+
+      <div class="row" id="questionRow">
         <input id="question" placeholder="Fai una domanda sì/no" />
         <button id="ask">Chiedi</button>
         <input id="guess" placeholder="Tenta la risposta" />
         <button id="submitGuess">Indovina</button>
       </div>
 
-      <h3>Log</h3>
       <div class="log" id="log"></div>
 
-      <h3>Chat</h3>
       <div class="chat-box" id="chat"></div>
       <div class="row">
-        <input id="chatInput" placeholder="Scrivi un messaggio..." style="flex:1;" />
+        <input id="chatInput" placeholder="Scrivi un messaggio..." />
         <button id="sendChat">Invia</button>
       </div>
     </div>
   </div>
 
-  <!-- Overlay per il pensatore -->
-  <div id="overlay">
-    <div class="content">
-      <h2 id="overlay-question">Domanda</h2>
-      <p id="overlay-secret"></p>
-      <div>
-        <button onclick="sendAnswer('Sì')">Sì</button>
-        <button onclick="sendAnswer('No')">No</button>
-        <button onclick="sendAnswer('Non so')">Non so</button>
-      </div>
+  <!-- Overlay Risposta Pensatore -->
+  <div id="answerOverlay">
+    <h2 id="overlayQuestion"></h2>
+    <p>Parola segreta: <b id="overlaySecret"></b></p>
+    <div>
+      <button onclick="sendAnswer('Sì')">Sì</button>
+      <button onclick="sendAnswer('No')">No</button>
+      <button onclick="sendAnswer('Non so')">Non so</button>
     </div>
+  </div>
+
+  <!-- Overlay Risultato -->
+  <div id="resultOverlay">
+    <h1 id="resultText"></h1>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -92,130 +167,163 @@
     let roomCode = null;
     let me = { id: null, name: null, role: null };
     let lastQuestionId = null;
-    const $ = (id) => document.getElementById(id);
+    const $ = id => document.getElementById(id);
 
     function appendLog(msg) {
-      const d = document.createElement('div'); d.textContent = msg;
-      $('log').appendChild(d); $('log').scrollTop = $('log').scrollHeight;
+      const d = document.createElement('div');
+      d.textContent = msg;
+      $('log').appendChild(d);
+      $('log').scrollTop = $('log').scrollHeight;
     }
-    function appendChat(name, text) {
-      const d = document.createElement('div'); d.innerHTML = '<b>'+name+':</b> '+text;
-      $('chat').appendChild(d); $('chat').scrollTop = $('chat').scrollHeight;
+
+    function appendChat({name, text}) {
+      const d = document.createElement('div');
+      d.innerHTML = `<b>${name}:</b> ${text}`;
+      $('chat').appendChild(d);
+      $('chat').scrollTop = $('chat').scrollHeight;
     }
 
     function sendAnswer(ans) {
       if (lastQuestionId) {
         socket.emit('question:answer', { code: roomCode, id: lastQuestionId, answer: ans });
         lastQuestionId = null;
-        $('overlay').style.display = 'none';
+        $('answerOverlay').style.display = 'none';
       }
     }
 
-    // Home
+    // Pulsanti Home
     $('create').onclick = () => {
       me.name = $('name').value || 'Anon';
       roomCode = ($('code').value || 'ABCD').toUpperCase();
       socket.emit('room:create', { code: roomCode, name: me.name });
+      $('home').classList.add('hidden');
+      $('game').classList.remove('hidden');
     };
-    $('leave').onclick = () => {
-      socket.emit('room:leave', { code: roomCode });
-      $('game').classList.add('hidden');
-      $('home').classList.remove('hidden');
-      $('log').innerHTML = '';
-      $('chat').innerHTML = '';
+    $('join').onclick = () => {
+      me.name = $('name').value || 'Anon';
+      roomCode = ($('code').value || 'ABCD').toUpperCase();
+      socket.emit('room:join', { code: roomCode, name: me.name });
+      $('home').classList.add('hidden');
+      $('game').classList.remove('hidden');
     };
+    $('exit').onclick = () => location.reload();
 
-    // Gameplay
-    $('start').onclick = () => socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
-    $('ask').onclick = () => { const t = $('question').value.trim(); if (t) socket.emit('question:ask', { code: roomCode, text: t }); $('question').value = ''; };
-    $('submitGuess').onclick = () => { const t = $('guess').value.trim(); if (t) socket.emit('guess:submit', { code: roomCode, text: t }); $('guess').value = ''; };
-
+    $('start').onclick = () => {
+      socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
+      $('start').classList.add('hidden');
+      $('secret').setAttribute('readonly', true);
+    };
+    $('ask').onclick = () => {
+      const t = $('question').value.trim();
+      if (t) socket.emit('question:ask', { code: roomCode, text: t });
+      $('question').value = '';
+    };
+    $('submitGuess').onclick = () => {
+      const t = $('guess').value.trim();
+      if (t) socket.emit('guess:submit', { code: roomCode, text: t });
+      $('guess').value = '';
+    };
     $('sendChat').onclick = () => {
-      const text = $('chatInput').value.trim();
-      if (text) {
-        socket.emit('chat:message', { code: roomCode, name: me.name, text });
+      const t = $('chatInput').value.trim();
+      if (t) {
+        socket.emit('chat:send', { code: roomCode, name: me.name, text: t });
         $('chatInput').value = '';
       }
     };
 
-    // Socket events
     socket.on('connect', () => { me.id = socket.id; });
-    socket.on('system:error', (m) => appendLog('❗ ' + m));
+    socket.on('system:error', m => appendLog('❗ ' + m));
 
-    socket.on('rooms:update', (list) => {
-      $('rooms').innerHTML = '';
+    socket.on('rooms:list', (list) => {
+      const c = $('rooms');
+      c.innerHTML = '';
       if (list.length === 0) {
-        $('rooms').innerHTML = '<i>Nessuna stanza attiva al momento.</i>';
+        $('noRooms').style.display = 'block';
       } else {
+        $('noRooms').style.display = 'none';
         list.forEach(r => {
           const div = document.createElement('div');
-          div.className = 'row';
-          div.innerHTML = `<span>Stanza <b>${r.code}</b> — Giocatori: ${r.players} — Stato: ${r.status}</span>`;
-          const btn = document.createElement('button');
-          btn.textContent = 'Entra';
-          btn.onclick = () => {
-            me.name = $('name').value || 'Anon';
-            roomCode = r.code;
-            socket.emit('room:join', { code: roomCode, name: me.name });
-          };
-          div.appendChild(btn);
-          $('rooms').appendChild(div);
+          div.className = 'room-item';
+          div.innerHTML = `<span>${r.code} (${r.players} giocatori)</span>
+            <button onclick="joinRoom('${r.code}')">Entra</button>`;
+          c.appendChild(div);
         });
       }
     });
 
-    socket.on('room:state', (s) => {
+    function joinRoom(code) {
+      me.name = $('name').value || 'Anon';
+      roomCode = code;
+      socket.emit('room:join', { code: roomCode, name: me.name });
       $('home').classList.add('hidden');
       $('game').classList.remove('hidden');
-      $('qmax').textContent = s.maxQuestions;
+    }
+
+    socket.on('room:state', (s) => {
       const meEntry = s.players.find(p => p.id === me.id);
       if (meEntry) me.role = meEntry.role;
-      $('thinker').classList.toggle('hidden', me.role !== 'thinker');
-      $('actions').classList.toggle('hidden', me.role === 'thinker');
-      $('start').classList.toggle('hidden', s.status !== 'waiting');
+      $('thinker').style.display = me.role === 'thinker' ? 'flex' : 'none';
+      $('questionRow').style.display = me.role === 'thinker' ? 'none' : 'flex';
       appendLog(`👥 Stanza ${s.code} — giocatori: ${s.players.map(p=>p.name + (p.role==='thinker'?'(P)':'')).join(', ')}`);
     });
 
-    socket.on('round:started', ({ maxQuestions, players }) => {
+    socket.on('round:started', ({ maxQuestions }) => {
       $('qcount').textContent = 0;
-      $('progress').style.width = '0%';
+      $('questionProgress').value = 0;
       appendLog('▶️ Round iniziato! Max ' + maxQuestions + ' domande.');
-      $('start').classList.add('hidden');
+      $('secret').setAttribute('readonly', true);
+      if (me.role === 'thinker') $('start').classList.add('hidden');
     });
-
     socket.on('round:secret', ({ secretWord }) => appendLog('🔒 Sei Pensatore. Parola: ' + secretWord));
 
     socket.on('question:new', (q) => {
+      $('qcount').textContent = q.id;
+      $('questionProgress').value = q.id;
       appendLog(`❓ (${q.byName}) ${q.text}`);
       if (me.role === 'thinker') {
         lastQuestionId = q.id;
-        $('overlay-question').textContent = q.text;
-        $('overlay-secret').textContent = 'Parola: ' + ($('secret').value || '(segreta)');
-        $('overlay').style.display = 'flex';
+        $('overlayQuestion').textContent = q.text;
+        $('overlaySecret').textContent = $('secret').value;
+        $('answerOverlay').style.display = 'flex';
       }
     });
+    socket.on('question:update', (q) => appendLog(`🗣️ Risposta: ${q.answer}`));
 
-    socket.on('question:update', (q) => { appendLog(`🗣️ Risposta: ${q.answer}`); });
     socket.on('turn:now', ({ socketId, name }) => {
       $('turn').textContent = socketId === me.id ? 'TU' : (name || '–');
     });
-    socket.on('guess:new', (g) => appendLog(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`));
-    socket.on('round:ended', ({ message, secretWord }) => {
+
+    socket.on('guess:new', (g) => {
+      appendLog(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`);
+      $('qcount').textContent = parseInt($('qcount').textContent) + 1;
+      $('questionProgress').value = $('qcount').textContent;
+    });
+
+    socket.on('round:ended', ({ message, secretWord, guesser }) => {
       appendLog('🏁 ' + message + ` (Parola: ${secretWord})`);
       $('start').classList.remove('hidden');
+      $('secret').removeAttribute('readonly');
+      $('questionProgress').value = 0;
+
+      // logica vincitore/perdente
+      let win = false;
+      if (me.role === 'thinker') {
+        win = !guesser;
+      } else {
+        win = (guesser === me.id);
+      }
+
+      const overlay = $('resultOverlay');
+      overlay.className = win ? 'win' : 'lose';
+      $('resultText').textContent = win ? '🎉 Hai vinto!' : '💀 Hai perso!';
+      overlay.style.display = 'flex';
+      setTimeout(() => overlay.style.display = 'none', 4000);
     });
 
-    // Contatore domande: SOLO server decide
-    socket.on('counter:update', ({ asked, max }) => {
-      $('qcount').textContent = asked;
-      $('progress').style.width = (asked/max*100)+'%';
-    });
-
-    // Chat & Log
-    socket.on('chat:message', ({ name, text }) => appendChat(name, text));
-    socket.on('chat:history', (msgs) => { msgs.forEach(m => appendChat(m.name, m.text)); });
-    socket.on('log:message', (m) => appendLog(m));
-    socket.on('log:history', (msgs) => { msgs.forEach(m => appendLog(m)); });
+    socket.on('log:new', appendLog);
+    socket.on('log:history', (msgs) => { msgs.forEach(appendLog); });
+    socket.on('chat:new', appendChat);
+    socket.on('chat:history', (msgs) => { msgs.forEach(appendChat); });
   </script>
 </body>
 </html>
