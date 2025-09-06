@@ -7,323 +7,315 @@
   <style>
     body {
       font-family: system-ui, sans-serif;
-      background: #f4f6f9;
+      background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
       margin: 0;
       padding: 0;
+      min-height: 100vh;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
     }
-    .container {
-      max-width: 900px;
-      width: 100%;
-      padding: 16px;
-    }
-    h1 {
+    header {
+      background: #4a90e2;
+      color: white;
+      padding: 12px;
       text-align: center;
-      margin-bottom: 16px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    main {
+      flex: 1;
+      padding: 16px;
+      max-width: 900px;
+      margin: auto;
+      width: 100%;
     }
     .hidden { display: none !important; }
     .row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+    .log, .chat {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: white;
+      padding: 8px;
+      height: 200px;
+      overflow-y: auto;
+      margin: 8px 0;
+      font-size: 14px;
+    }
     input, button {
       padding: 8px;
-      font-size: 16px;
       border-radius: 6px;
-      border: 1px solid #ccc;
+      border: 1px solid #bbb;
+      font-size: 14px;
     }
     button {
       background: #4a90e2;
       color: white;
       border: none;
       cursor: pointer;
+      transition: background 0.3s;
     }
-    button:hover { background: #357ABD; }
-    .log, .chat-box {
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      background: white;
-      padding: 8px;
-      height: 200px;
-      overflow-y: auto;
-      margin-bottom: 8px;
-    }
+    button:hover { background: #357abd; }
     .pill {
-      padding: 2px 8px;
+      padding: 4px 10px;
       border-radius: 999px;
-      border: 1px solid #ccc;
-      background: #fff;
+      background: #eee;
+      font-size: 13px;
     }
-    #questionProgress {
+    .progress {
       width: 100%;
-      height: 20px;
+      height: 12px;
+      background: #eee;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+    .progress-bar {
+      height: 100%;
+      background: #4a90e2;
+      width: 0%;
+      transition: width 0.3s;
     }
     #answerOverlay, #resultOverlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.8);
-      color: white;
       display: none;
       justify-content: center;
       align-items: center;
       flex-direction: column;
+      color: white;
       z-index: 1000;
       text-align: center;
-      padding: 16px;
+      padding: 20px;
     }
-    #answerOverlay button {
-      font-size: 24px;
-      margin: 8px;
+    #answerOverlay h2 { font-size: 28px; margin-bottom: 16px; }
+    #answerOverlay .buttons button { margin: 8px; font-size: 18px; padding: 12px 20px; }
+    #resultOverlay.win { background: rgba(0, 128, 0, 0.85); }
+    #resultOverlay.lose { background: rgba(128, 0, 0, 0.85); }
+    #resultOverlay h1 {
+      font-size: 48px;
+      animation: pop 1s ease;
     }
-    #resultOverlay.win { background: rgba(0,128,0,0.8); }
-    #resultOverlay.lose { background: rgba(128,0,0,0.8); }
-    #secret[readonly] {
-      background: #e0e0e0;
+    @keyframes pop {
+      0% { transform: scale(0.5); opacity: 0; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); }
     }
     .room-list {
       border: 1px solid #ccc;
-      border-radius: 6px;
+      border-radius: 8px;
       background: white;
-      padding: 8px;
-      margin-top: 8px;
+      padding: 12px;
     }
-    .room-item {
+    .room-entry {
       display: flex;
       justify-content: space-between;
-      padding: 6px;
+      padding: 6px 0;
       border-bottom: 1px solid #eee;
     }
-    .room-item:last-child { border-bottom: none; }
+    .room-entry:last-child { border-bottom: none; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>20 Questions Multiplayer</h1>
-
-    <!-- Home -->
-    <div id="home">
+  <header>20 Domande Multiplayer</header>
+  <main>
+    <!-- HOME -->
+    <section id="home">
       <div class="row">
         <input id="name" placeholder="Il tuo nome" />
         <input id="code" placeholder="Codice stanza (es. ABCD)" />
         <button id="create">Crea (Pensatore)</button>
         <button id="join">Entra</button>
       </div>
-      <div id="roomList" class="room-list">
-        <p id="noRooms">Nessuna stanza attiva</p>
-        <div id="rooms"></div>
-      </div>
-    </div>
+      <h3>Stanze attive</h3>
+      <div id="rooms" class="room-list">Nessuna stanza attiva</div>
+    </section>
 
-    <!-- Gioco -->
-    <div id="game" class="hidden">
+    <!-- GAME -->
+    <section id="game" class="hidden">
       <div class="row">
-        <button id="exit">⬅️ Esci</button>
+        <button id="leave">Esci</button>
+        <span>Turno: <span id="turn" class="pill">–</span></span>
+        <span class="pill">Domande: <span id="qcount">0</span>/20</span>
       </div>
-      <div class="row" id="thinker">
+
+      <div id="thinkerControls" class="row hidden">
         <input id="secret" placeholder="Parola segreta" />
         <button id="start">Avvia round</button>
       </div>
 
-      <div class="row">
-        <span>Turno: <span id="turn" class="pill">–</span></span>
-        <span class="pill">Domande: <span id="qcount">0</span>/20</span>
-      </div>
-      <progress id="questionProgress" value="0" max="20"></progress>
-
-      <div class="row" id="questionRow">
+      <div id="questionControls" class="row">
         <input id="question" placeholder="Fai una domanda sì/no" />
         <button id="ask">Chiedi</button>
         <input id="guess" placeholder="Tenta la risposta" />
         <button id="submitGuess">Indovina</button>
       </div>
 
-      <div class="log" id="log"></div>
+      <div class="progress"><div id="progressBar" class="progress-bar"></div></div>
 
-      <div class="chat-box" id="chat"></div>
+      <div class="log" id="log"></div>
+      <div class="chat" id="chat"></div>
       <div class="row">
         <input id="chatInput" placeholder="Scrivi un messaggio..." />
-        <button id="sendChat">Invia</button>
+        <button id="chatSend">Invia</button>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
-  <!-- Overlay Risposta Pensatore -->
+  <!-- OVERLAYS -->
   <div id="answerOverlay">
     <h2 id="overlayQuestion"></h2>
-    <p>Parola segreta: <b id="overlaySecret"></b></p>
-    <div>
+    <p>Parola segreta: <strong id="overlaySecret"></strong></p>
+    <div class="buttons">
       <button onclick="sendAnswer('Sì')">Sì</button>
       <button onclick="sendAnswer('No')">No</button>
       <button onclick="sendAnswer('Non so')">Non so</button>
     </div>
   </div>
 
-  <!-- Overlay Risultato -->
-  <div id="resultOverlay">
-    <h1 id="resultText"></h1>
-  </div>
+  <div id="resultOverlay"><h1 id="resultText"></h1></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    let roomCode = null;
-    let me = { id: null, name: null, role: null };
+    let me = { id:null, name:null, role:null, room:null };
     let lastQuestionId = null;
+
     const $ = id => document.getElementById(id);
+    const appendLog = msg => { const d=document.createElement('div'); d.textContent=msg; $('log').appendChild(d); $('log').scrollTop=$('log').scrollHeight; };
+    const appendChat = (msg,from) => { const d=document.createElement('div'); d.innerHTML = `<strong>${from}:</strong> ${msg}`; $('chat').appendChild(d); $('chat').scrollTop=$('chat').scrollHeight; };
 
-    function appendLog(msg) {
-      const d = document.createElement('div');
-      d.textContent = msg;
-      $('log').appendChild(d);
-      $('log').scrollTop = $('log').scrollHeight;
+    function updateProgress(count,max=20){
+      $('qcount').textContent = count;
+      $('progressBar').style.width = (count/max*100)+'%';
     }
 
-    function appendChat({name, text}) {
-      const d = document.createElement('div');
-      d.innerHTML = `<b>${name}:</b> ${text}`;
-      $('chat').appendChild(d);
-      $('chat').scrollTop = $('chat').scrollHeight;
-    }
-
-    function sendAnswer(ans) {
-      if (lastQuestionId) {
-        socket.emit('question:answer', { code: roomCode, id: lastQuestionId, answer: ans });
-        lastQuestionId = null;
-        $('answerOverlay').style.display = 'none';
+    function sendAnswer(ans){
+      if(lastQuestionId){
+        socket.emit('question:answer',{ code:me.room,id:lastQuestionId,answer:ans });
+        lastQuestionId=null;
+        $('answerOverlay').style.display='none';
       }
     }
 
-    // Pulsanti Home
-    $('create').onclick = () => {
-      me.name = $('name').value || 'Anon';
-      roomCode = ($('code').value || 'ABCD').toUpperCase();
-      socket.emit('room:create', { code: roomCode, name: me.name });
-      $('home').classList.add('hidden');
-      $('game').classList.remove('hidden');
+    // Home
+    $('create').onclick=()=>{
+      me.name=$('name').value||'Anon';
+      me.room=($('code').value||'ABCD').toUpperCase();
+      socket.emit('room:create',{ name:me.name, code:me.room });
     };
-    $('join').onclick = () => {
-      me.name = $('name').value || 'Anon';
-      roomCode = ($('code').value || 'ABCD').toUpperCase();
-      socket.emit('room:join', { code: roomCode, name: me.name });
-      $('home').classList.add('hidden');
-      $('game').classList.remove('hidden');
+    $('join').onclick=()=>{
+      me.name=$('name').value||'Anon';
+      me.room=($('code').value||'ABCD').toUpperCase();
+      socket.emit('room:join',{ name:me.name, code:me.room });
     };
-    $('exit').onclick = () => location.reload();
 
-    $('start').onclick = () => {
-      socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
+    // Game
+    $('leave').onclick=()=>{
+      socket.emit('room:leave',{ code:me.room });
+      me.room=null;
+      $('game').classList.add('hidden');
+      $('home').classList.remove('hidden');
+      $('log').innerHTML='';
+      $('chat').innerHTML='';
+    };
+
+    $('start').onclick=()=>{
+      socket.emit('game:start',{ code:me.room, secret:$('secret').value });
+      $('secret').readOnly=true;
       $('start').classList.add('hidden');
-      $('secret').setAttribute('readonly', true);
     };
-    $('ask').onclick = () => {
-      const t = $('question').value.trim();
-      if (t) socket.emit('question:ask', { code: roomCode, text: t });
-      $('question').value = '';
+    $('ask').onclick=()=>{
+      const t=$('question').value.trim();
+      if(t) socket.emit('question:ask',{ code:me.room,text:t });
+      $('question').value='';
     };
-    $('submitGuess').onclick = () => {
-      const t = $('guess').value.trim();
-      if (t) socket.emit('guess:submit', { code: roomCode, text: t });
-      $('guess').value = '';
+    $('submitGuess').onclick=()=>{
+      const t=$('guess').value.trim();
+      if(t) socket.emit('guess:try',{ code:me.room,guess:t });
+      $('guess').value='';
     };
-    $('sendChat').onclick = () => {
-      const t = $('chatInput').value.trim();
-      if (t) {
-        socket.emit('chat:send', { code: roomCode, name: me.name, text: t });
-        $('chatInput').value = '';
-      }
+    $('chatSend').onclick=()=>{
+      const t=$('chatInput').value.trim();
+      if(t) socket.emit('chat:send',{ code:me.room,text:t });
+      $('chatInput').value='';
     };
 
-    socket.on('connect', () => { me.id = socket.id; });
-    socket.on('system:error', m => appendLog('❗ ' + m));
+    // Socket handlers
+    socket.on('connect',()=>{ me.id=socket.id; });
 
-    socket.on('rooms:list', (list) => {
-      const c = $('rooms');
-      c.innerHTML = '';
-      if (list.length === 0) {
-        $('noRooms').style.display = 'block';
-      } else {
-        $('noRooms').style.display = 'none';
-        list.forEach(r => {
-          const div = document.createElement('div');
-          div.className = 'room-item';
-          div.innerHTML = `<span>${r.code} (${r.players} giocatori)</span>
-            <button onclick="joinRoom('${r.code}')">Entra</button>`;
-          c.appendChild(div);
-        });
-      }
+    socket.on('rooms:update',list=>{
+      if(list.length===0){ $('rooms').textContent='Nessuna stanza attiva'; return; }
+      $('rooms').innerHTML='';
+      list.forEach(r=>{
+        const div=document.createElement('div');
+        div.className='room-entry';
+        div.innerHTML=`<span>${r.code} (${r.count} giocatori)</span> <button>Entra</button>`;
+        div.querySelector('button').onclick=()=>{
+          me.name=$('name').value||'Anon';
+          me.room=r.code;
+          socket.emit('room:join',{ name:me.name, code:r.code });
+        };
+        $('rooms').appendChild(div);
+      });
     });
 
-    function joinRoom(code) {
-      me.name = $('name').value || 'Anon';
-      roomCode = code;
-      socket.emit('room:join', { code: roomCode, name: me.name });
+    socket.on('room:joined',({ code, role })=>{
+      me.room=code; me.role=role;
       $('home').classList.add('hidden');
       $('game').classList.remove('hidden');
-    }
-
-    socket.on('room:state', (s) => {
-      const meEntry = s.players.find(p => p.id === me.id);
-      if (meEntry) me.role = meEntry.role;
-      $('thinker').style.display = me.role === 'thinker' ? 'flex' : 'none';
-      $('questionRow').style.display = me.role === 'thinker' ? 'none' : 'flex';
-      appendLog(`👥 Stanza ${s.code} — giocatori: ${s.players.map(p=>p.name + (p.role==='thinker'?'(P)':'')).join(', ')}`);
+      if(role==='thinker') $('thinkerControls').classList.remove('hidden');
+      else $('thinkerControls').classList.add('hidden');
+      $('questionControls').style.display = role==='thinker' ? 'none':'flex';
     });
 
-    socket.on('round:started', ({ maxQuestions }) => {
-      $('qcount').textContent = 0;
-      $('questionProgress').value = 0;
-      appendLog('▶️ Round iniziato! Max ' + maxQuestions + ' domande.');
-      $('secret').setAttribute('readonly', true);
-      if (me.role === 'thinker') $('start').classList.add('hidden');
+    socket.on('game:started',({ secretLen })=>{
+      appendLog('▶️ Round iniziato! Max 20 domande.');
+      $('qcount').textContent=0; updateProgress(0);
+      $('secret').readOnly=true;
+      $('start').classList.add('hidden');
     });
-    socket.on('round:secret', ({ secretWord }) => appendLog('🔒 Sei Pensatore. Parola: ' + secretWord));
 
-    socket.on('question:new', (q) => {
-      $('qcount').textContent = q.id;
-      $('questionProgress').value = q.id;
+    socket.on('question:new',q=>{
       appendLog(`❓ (${q.byName}) ${q.text}`);
-      if (me.role === 'thinker') {
-        lastQuestionId = q.id;
-        $('overlayQuestion').textContent = q.text;
-        $('overlaySecret').textContent = $('secret').value;
-        $('answerOverlay').style.display = 'flex';
+      updateProgress(q.id);
+      if(me.role==='thinker'){
+        lastQuestionId=q.id;
+        $('overlayQuestion').textContent=q.text;
+        $('overlaySecret').textContent=$('secret').value;
+        $('answerOverlay').style.display='flex';
       }
     });
-    socket.on('question:update', (q) => appendLog(`🗣️ Risposta: ${q.answer}`));
 
-    socket.on('turn:now', ({ socketId, name }) => {
-      $('turn').textContent = socketId === me.id ? 'TU' : (name || '–');
+    socket.on('question:update',q=>{
+      appendLog(`🗣️ Risposta: ${q.answer}`);
     });
 
-    socket.on('guess:new', (g) => {
-      appendLog(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`);
-      $('qcount').textContent = parseInt($('qcount').textContent) + 1;
-      $('questionProgress').value = $('qcount').textContent;
+    socket.on('turn:now',({ socketId,name })=>{
+      $('turn').textContent = socketId===me.id ? 'TU' : (name||'–');
     });
 
-    socket.on('round:ended', ({ message, secretWord, guesser }) => {
-      appendLog('🏁 ' + message + ` (Parola: ${secretWord})`);
+    socket.on('guess:wrong',g=>{
+      appendLog(`🎯 ${g.name} ha tentato "${g.guess}" ❌`);
+    });
+
+    socket.on('round:ended',({ message, secretWord, guesser })=>{
+      appendLog('🏁 '+message+` (Parola: ${secretWord})`);
       $('start').classList.remove('hidden');
-      $('secret').removeAttribute('readonly');
-      $('questionProgress').value = 0;
-
-      // logica vincitore/perdente
-      let win = false;
-      if (me.role === 'thinker') {
-        win = !guesser;
-      } else {
-        win = (guesser === me.id);
-      }
-
-      const overlay = $('resultOverlay');
-      overlay.className = win ? 'win' : 'lose';
-      $('resultText').textContent = win ? '🎉 Hai vinto!' : '💀 Hai perso!';
-      overlay.style.display = 'flex';
-      setTimeout(() => overlay.style.display = 'none', 4000);
+      $('secret').readOnly=false;
+      let win=false;
+      if(me.role==='thinker') win=!guesser;
+      else win=(guesser===me.id);
+      const overlay=$('resultOverlay');
+      overlay.className=win?'win':'lose';
+      $('resultText').textContent=win?'🎉 Hai vinto!':'💀 Hai perso!';
+      overlay.style.display='flex';
+      setTimeout(()=>overlay.style.display='none',4000);
     });
 
-    socket.on('log:new', appendLog);
-    socket.on('log:history', (msgs) => { msgs.forEach(appendLog); });
-    socket.on('chat:new', appendChat);
-    socket.on('chat:history', (msgs) => { msgs.forEach(appendChat); });
+    socket.on('log',msg=>appendLog(msg));
+    socket.on('chat:new',({ from,text })=>appendChat(text,from));
+    socket.on('system:error',m=>appendLog('❗ '+m));
   </script>
 </body>
 </html>
