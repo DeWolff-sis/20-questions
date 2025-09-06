@@ -22,6 +22,31 @@
     #overlay .content { background:#111; padding:24px; border-radius:12px; max-width:500px; }
     #overlay h2 { margin-bottom:16px; }
     #overlay button { margin:4px; font-size:18px; padding:12px 20px; }
+
+    /* Overlay fine partita */
+    #endOverlay {
+      position: fixed; top:0; left:0; right:0; bottom:0;
+      background: rgba(0,0,0,0.85); color:white;
+      display:none; justify-content:center; align-items:center;
+      z-index:2000; text-align:center; padding:20px;
+    }
+    #endOverlay .message {
+      padding:24px; border-radius:16px; font-size:24px;
+      animation: pop 0.6s ease;
+    }
+    #endOverlay.victory .message { background:green; }
+    #endOverlay.defeat .message { background:red; }
+    @keyframes pop {
+      from { transform:scale(0.5); opacity:0; }
+      to { transform:scale(1); opacity:1; }
+    }
+    #endOverlay button {
+      margin-top:12px;
+      padding:8px 16px;
+      border:none; border-radius:8px;
+      font-size:16px;
+      cursor:pointer;
+    }
   </style>
 </head>
 <body>
@@ -86,6 +111,14 @@
     </div>
   </div>
 
+  <!-- Overlay fine partita -->
+  <div id="endOverlay">
+    <div class="message">
+      <span id="endText"></span><br/>
+      <button onclick="hideEndOverlay()">Chiudi</button>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
@@ -109,6 +142,17 @@
         lastQuestionId = null;
         $('overlay').style.display = 'none';
       }
+    }
+
+    // Overlay fine partita helpers
+    function showEndOverlay(text, victoryClass=null) {
+      const overlay = $('endOverlay');
+      overlay.className = victoryClass ? victoryClass : '';
+      $('endText').textContent = text;
+      overlay.style.display = 'flex';
+    }
+    function hideEndOverlay() {
+      $('endOverlay').style.display = 'none';
     }
 
     // Home
@@ -139,7 +183,10 @@
     };
 
     // Socket events
-    socket.on('connect', () => { me.id = socket.id; });
+    socket.on('connect', () => { 
+      me.id = socket.id; 
+      socket.emit('rooms:list'); // 👈 chiedi subito la lista stanze
+    });
     socket.on('system:error', (m) => appendLog('❗ ' + m));
 
     socket.on('rooms:update', (list) => {
@@ -200,12 +247,28 @@
       $('turn').textContent = socketId === me.id ? 'TU' : (name || '–');
     });
     socket.on('guess:new', (g) => appendLog(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`));
-    socket.on('round:ended', ({ message, secretWord }) => {
-      appendLog('🏁 ' + message + ` (Parola: ${secretWord})`);
+
+    socket.on('round:ended', ({ message, secretWord, winnerId }) => {
+      appendLog('🏁 ' + message + (secretWord ? ` (Parola: ${secretWord})` : ''));
       $('start').classList.remove('hidden');
+
+      // Overlay di vittoria/sconfitta
+      if (message.includes('Pensatore ha lasciato')) {
+        showEndOverlay(`${message} La parola era: ${secretWord}`);
+        return;
+      }
+      if (!me.role) return;
+      let victory = false;
+      if (me.role === 'thinker') {
+        victory = !winnerId; // Vince se nessuno ha indovinato
+      } else {
+        victory = winnerId === me.id; // Vince solo se lui ha indovinato
+      }
+      const text = (victory ? '🏆 Vittoria!' : '😢 Sconfitta!') + (secretWord ? ` La parola era: ${secretWord}` : '');
+      showEndOverlay(text, victory ? 'victory' : 'defeat');
     });
 
-    // Contatore domande: SOLO server decide
+    // Contatore domande
     socket.on('counter:update', ({ asked, max }) => {
       $('qcount').textContent = asked;
       $('progress').style.width = (asked/max*100)+'%';
