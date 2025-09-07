@@ -22,12 +22,18 @@
     #overlay .content { background:#111; padding:24px; border-radius:12px; max-width:500px; }
     #overlay h2 { margin-bottom:16px; }
     #overlay button { margin:4px; font-size:18px; padding:12px 20px; }
-    #endOverlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.9); display:none; justify-content:center; align-items:center; z-index:2000; color:white; text-align:center; }
-    #endOverlay .content { background:#111; padding:32px; border-radius:16px; animation:pop 0.6s ease; }
-    #endOverlay h2 { font-size:32px; margin-bottom:16px; }
-    #endOverlay.win { background:rgba(34,197,94,0.9); }
-    #endOverlay.lose { background:rgba(239,68,68,0.9); }
-    @keyframes pop { from { transform:scale(0.5); opacity:0; } to { transform:scale(1); opacity:1; } }
+    /* Overlay fine partita */
+    #endOverlay { position:fixed; top:0; left:0; right:0; bottom:0; display:none; justify-content:center; align-items:center; background:rgba(0,0,0,0.85); z-index:2000; color:white; text-align:center; }
+    #endOverlay .content { padding:30px; border-radius:16px; animation:pop 0.6s ease; }
+    #endOverlay.win .content { background:linear-gradient(135deg,#16a34a,#4ade80); }
+    #endOverlay.lose .content { background:linear-gradient(135deg,#dc2626,#f87171); }
+    #endOverlay h2 { font-size:2rem; margin-bottom:10px; }
+    #endOverlay button { margin-top:16px; padding:10px 20px; font-size:16px; border:none; border-radius:8px; cursor:pointer; }
+    @keyframes pop { from { transform:scale(0.7); opacity:0; } to { transform:scale(1); opacity:1; } }
+    /* Timer */
+    #turnTimer { height:18px; border-radius:8px; background:#e5e7eb; overflow:hidden; margin-top:8px; }
+    #turnTimer .bar { height:100%; background:#f59e0b; width:100%; transition:width linear; }
+    #turnTimerLabel { font-size:14px; margin-top:4px; text-align:center; }
   </style>
 </head>
 <body>
@@ -67,6 +73,10 @@
         <button id="submitGuess">Indovina</button>
       </div>
 
+      <!-- Timer -->
+      <div id="turnTimer" class="hidden"><div class="bar" id="turnTimerBar"></div></div>
+      <div id="turnTimerLabel" class="hidden"></div>
+
       <h3>Log</h3>
       <div class="log" id="log"></div>
 
@@ -92,8 +102,14 @@
     </div>
   </div>
 
-  <!-- Overlay di fine partita -->
-  <div id="endOverlay"><div class="content"><h2 id="endMessage"></h2><p id="endSecret"></p><button onclick="closeEndOverlay()">Chiudi</button></div></div>
+  <!-- Overlay fine partita -->
+  <div id="endOverlay">
+    <div class="content">
+      <h2 id="endTitle"></h2>
+      <p id="endMessage"></p>
+      <button onclick="document.getElementById('endOverlay').style.display='none'">Chiudi</button>
+    </div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
@@ -101,6 +117,7 @@
     let roomCode = null;
     let me = { id: null, name: null, role: null };
     let lastQuestionId = null;
+    let timerInterval = null;
     const $ = (id) => document.getElementById(id);
 
     function appendLog(msg) {
@@ -117,12 +134,33 @@
         socket.emit('question:answer', { code: roomCode, id: lastQuestionId, answer: ans });
         lastQuestionId = null;
         $('overlay').style.display = 'none';
+        stopTurnTimer();
       }
     }
 
-    function closeEndOverlay() {
-      $('endOverlay').style.display = 'none';
-      $('endOverlay').classList.remove('win','lose');
+    function startTurnTimer(duration, type) {
+      clearInterval(timerInterval);
+      $('turnTimer').classList.remove('hidden');
+      $('turnTimerLabel').classList.remove('hidden');
+      $('turnTimerBar').style.transition = 'none';
+      $('turnTimerBar').style.width = '100%';
+      setTimeout(() => {
+        $('turnTimerBar').style.transition = `width ${duration}ms linear`;
+        $('turnTimerBar').style.width = '0%';
+      }, 50);
+      $('turnTimerLabel').textContent = type === 'ask'
+        ? "Hai 60 secondi per fare la tua domanda..."
+        : "Hai 60 secondi per rispondere...";
+      timerInterval = setTimeout(() => {
+        $('turnTimer').classList.add('hidden');
+        $('turnTimerLabel').classList.add('hidden');
+      }, duration);
+    }
+
+    function stopTurnTimer() {
+      clearInterval(timerInterval);
+      $('turnTimer').classList.add('hidden');
+      $('turnTimerLabel').classList.add('hidden');
     }
 
     // Home
@@ -137,12 +175,13 @@
       $('home').classList.remove('hidden');
       $('log').innerHTML = '';
       $('chat').innerHTML = '';
+      stopTurnTimer();
     };
 
     // Gameplay
     $('start').onclick = () => socket.emit('round:start', { code: roomCode, secretWord: $('secret').value });
-    $('ask').onclick = () => { const t = $('question').value.trim(); if (t) socket.emit('question:ask', { code: roomCode, text: t }); $('question').value = ''; };
-    $('submitGuess').onclick = () => { const t = $('guess').value.trim(); if (t) socket.emit('guess:submit', { code: roomCode, text: t }); $('guess').value = ''; };
+    $('ask').onclick = () => { const t = $('question').value.trim(); if (t) socket.emit('question:ask', { code: roomCode, text: t }); $('question').value = ''; stopTurnTimer(); };
+    $('submitGuess').onclick = () => { const t = $('guess').value.trim(); if (t) socket.emit('guess:submit', { code: roomCode, text: t }); $('guess').value = ''; stopTurnTimer(); };
 
     $('sendChat').onclick = () => {
       const text = $('chatInput').value.trim();
@@ -209,25 +248,28 @@
       }
     });
 
-    socket.on('question:update', (q) => { appendLog(`🗣️ Risposta: ${q.answer}`); });
+    socket.on('question:update', (q) => { appendLog(`🗣️ Risposta: ${q.answer}`); stopTurnTimer(); });
     socket.on('turn:now', ({ socketId, name }) => {
       $('turn').textContent = socketId === me.id ? 'TU' : (name || '–');
     });
-    socket.on('guess:new', (g) => appendLog(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`));
-    socket.on('round:ended', ({ message, secretWord, winnerId }) => {
-      appendLog('🏁 ' + message + (secretWord?` (Parola: ${secretWord})`:''));
+    socket.on('guess:new', (g) => { appendLog(`🎯 ${g.name} ha tentato: "${g.text}" ${g.correct ? '✅' : '❌'}`); stopTurnTimer(); });
+    socket.on('round:ended', ({ message, secretWord, forceLose }) => {
+      appendLog('🏁 ' + message + ` (Parola: ${secretWord})`);
       $('start').classList.remove('hidden');
+      stopTurnTimer();
 
+      // Overlay vittoria/sconfitta
       let win = false;
       if (me.role === 'thinker') {
-        win = !(winnerId);
+        win = (forceLose ? false : message.includes("Domande terminate"));
       } else {
-        win = (winnerId === me.id);
+        if (message.includes(me.name) && message.includes("indovinato")) win = true;
+        else win = false;
       }
       $('endOverlay').style.display = 'flex';
-      $('endOverlay').classList.add(win ? 'win' : 'lose');
-      $('endMessage').textContent = win ? 'Vittoria!' : 'Sconfitta!';
-      $('endSecret').textContent = secretWord ? 'Parola: ' + secretWord : '';
+      $('endOverlay').className = win ? 'win' : 'lose';
+      $('endTitle').textContent = win ? "Hai Vinto!" : "Hai Perso!";
+      $('endMessage').textContent = message + " (Parola: " + secretWord + ")";
     });
 
     // Contatore domande
@@ -241,6 +283,11 @@
     socket.on('chat:history', (msgs) => { msgs.forEach(m => appendChat(m.name, m.text)); });
     socket.on('log:message', (m) => appendLog(m));
     socket.on('log:history', (msgs) => { msgs.forEach(m => appendLog(m)); });
+
+    // Timer events
+    socket.on('timer:start', ({ duration, type }) => {
+      if (me.id) startTurnTimer(duration, type);
+    });
   </script>
 </body>
 </html>
